@@ -60,6 +60,8 @@ RUN bun install
 # Copy the rest of the application code
 COPY . .
 
+RUN bunx prisma generate
+
 RUN bun run build
 
 EXPOSE 3000
