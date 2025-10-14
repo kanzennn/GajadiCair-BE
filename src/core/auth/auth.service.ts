@@ -53,7 +53,7 @@ export class AuthService {
       throw new BadRequestException('Google account has no email');
     }
 
-    let socialiteRecord = await this.prisma.userSocialite.findFirst({
+    const socialiteRecord = await this.prisma.userSocialite.findFirst({
       where: { socialite_id: googleId, socialite_name: 'google' },
       include: { user: true },
     });
@@ -80,14 +80,10 @@ export class AuthService {
           socialite_name: 'google',
         },
       });
-      userSocialite = await this.prisma.userSocialite.findFirst({
-        where: { socialite_id: googleId, socialite_name: 'google' },
-        include: { user: true },
-      });
     }
-    
-    const user = socialiteRecord.user;
-    const payloadJwt = { sub: user.id, email: user.email };
+
+    const user = socialiteRecord?.user;
+    const payloadJwt = { sub: user?.id, email: user?.email };
 
     const access_token = await this.jwtService.signAsync(payloadJwt);
 

@@ -54,7 +54,11 @@ export class AuthControllerV1 {
   }
 
   @Post('register')
-  register(@Body() registerAuthDto: RegisterAuthDto) {
-    return this.authService.register(registerAuthDto);
+  async register(@Body() registerAuthDto: RegisterAuthDto) {
+    return successResponse(
+      await this.authService.register(registerAuthDto),
+      'Register successful',
+      201,
+    );
   }
 }
