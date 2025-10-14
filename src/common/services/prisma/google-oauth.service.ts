@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
+import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 
 @Injectable()
 export class GoogleOauthService {
@@ -19,6 +20,10 @@ export class GoogleOauthService {
       idToken,
       audience: this.googleClientId,
     });
+
+    if (!ticket) {
+      throw new BadRequestException('Invalid Google token');
+    }
 
     const payload = ticket.getPayload();
     if (!payload) {

@@ -33,6 +33,7 @@ RUN bun install --production
 
 # Copy built files
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/generated ./generated
 
 # Set environment variable
 ENV NODE_ENV=production
