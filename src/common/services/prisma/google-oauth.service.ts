@@ -16,20 +16,19 @@ export class GoogleOauthService {
 
   async verifyToken(idToken: string): Promise<TokenPayload> {
     Logger.log(this.googleClientId);
-    const ticket = await this.client.verifyIdToken({
-      idToken,
-      audience: this.googleClientId,
-    });
+    try {
+      const ticket = await this.client.verifyIdToken({
+        idToken,
+        audience: this.googleClientId,
+      });
+      const payload = ticket.getPayload();
+      if (!payload) {
+        throw new Error('Invalid Google token');
+      }
 
-    if (!ticket) {
+      return payload;
+    } catch {
       throw new BadRequestException('Invalid Google token');
     }
-
-    const payload = ticket.getPayload();
-    if (!payload) {
-      throw new Error('Invalid Google token');
-    }
-
-    return payload;
   }
 }
