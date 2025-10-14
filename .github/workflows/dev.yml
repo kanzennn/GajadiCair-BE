@@ -61,6 +61,7 @@ jobs:
               -e S3_ACCESS_KEY_ID="${{ secrets.S3_ACCESS_KEY_ID }}" \
               -e S3_SECRET_ACCESS_KEY_ID="${{ secrets.S3_SECRET_ACCESS_KEY_ID }}" \
               -e S3_BUCKET_NAME="${{ vars.S3_BUCKET_NAME }}" \
+              -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
               -p ${{ vars.PORT }}:3000 \
               kanzen523/gajadicair-api:latest
 

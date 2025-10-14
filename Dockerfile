@@ -51,6 +51,8 @@ FROM oven/bun:latest AS builder
 # Set working directory
 WORKDIR /app
 
+RUN apt-get update -y && apt-get install -y openssl
+
 # Copy package.json and package-lock.json
 COPY package.json bun.lock ./
 
