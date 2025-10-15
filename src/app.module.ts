@@ -11,6 +11,7 @@ import appConfig from './config/app.config';
 import s3Config from './config/s3.config';
 import { AuthModule } from './core/auth/auth.module';
 import { LoggerMiddleware } from './common/middleware/logger/logger.middleware';
+import { PegawaiModule } from './core/pegawai/pegawai.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { LoggerMiddleware } from './common/middleware/logger/logger.middleware';
       load: [appConfig, s3Config],
     }),
     AuthModule,
+    PegawaiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

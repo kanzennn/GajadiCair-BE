@@ -26,7 +26,7 @@ model User {
   deleted_at  DateTime?
 
   socialites  UserSocialite[]
-
+  employees    Employee[]
   @@map("users")
 }
 
@@ -43,4 +43,18 @@ model UserSocialite {
 
   @@map("user_socialites")
   @@unique([socialite_name, socialite_id])
+}
+
+model Employee {
+  id          Int       @id @default(autoincrement())
+  name        String
+  company_id  String
+  password    String
+  is_active   Boolean   @default(true)
+  salary      Float
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+  company User @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  @@map("employees")
 }
