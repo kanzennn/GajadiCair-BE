@@ -8,53 +8,225 @@ generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
   binaryTargets = ["native", "debian-openssl-1.1.x"]
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  extensions = [postgis]
 }
 
-model User {
-  id          String   @id @default(uuid())
+model Company {
+  company_id          String   @id @default(uuid())
   email       String 
   name        String?
   password    String?
   avatar_uri String?
+
+  level_plan  Int   @default(0) // 0: free, 1: basic, 2: pro
+  plan_expiration DateTime?
+
+  minimum_hours_per_day        Int?         // minimal jam kerja per hari (contoh: 8)
+  attendance_open_time         DateTime?    // jam absensi dibuka (contoh: 08:30)
+  attendance_close_time        DateTime?    // jam absensi ditutup (opsional)
+  work_start_time              DateTime?    // jam masuk kantor (contoh: 09:00)
+  work_end_time                DateTime?    // jam pulang kantor (contoh: 17:00)
+  attendance_tolerance_minutes Int?         // toleransi keterlambatan (contoh: 10 menit)
+
+  payroll_day_of_month         Int?         // tanggal gajian setiap bulan (contoh: 25)
+
+  last_login        DateTime?
+
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
   deleted_at  DateTime?
 
-  socialites  UserSocialite[]
+  subscription_transactions_histories  CompanySubscriptionTransactionHistory[]
+  socialites  CompanySocialite[]
   employees    Employee[]
-  @@map("users")
+  payroll_deduction_rules  PayrollDeductionRule[]
+  payroll_allowance_rules   PayrollAllowanceRule[]
+
+  @@map("companies")
 }
 
-model UserSocialite {
-  id              String   @id @default(uuid())
-  user_id         String
+model PayrollDeductionRule {
+  payroll_deduction_rule_id String  @id @default(uuid())
+  company_id                String
+  name                      String
+  percentage                Float?       
+  fixed_amount              Float?      
+  is_active                 Boolean       @default(true)
+
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+  deleted_at                DateTime?
+
+  company Company @relation(fields: [company_id], references: [company_id], onDelete: Cascade)
+
+  @@map("payroll_deduction_rules")
+}
+
+model PayrollAllowanceRule {
+  payroll_allowance_rule_id String  @id @default(uuid())
+  company_id                String
+  name                      String
+  percentage                Float?
+  fixed_amount              Float?       
+  is_active                 Boolean       @default(true)
+
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+  deleted_at                DateTime?
+
+  company Company @relation(fields: [company_id], references: [company_id], onDelete: Cascade)
+
+  @@map("payroll_allowance_rules")
+}
+
+model CompanySocialite {
+  company_socialite_id              String   @id @default(uuid())
+  company_id         String
   socialite_name  String
   socialite_id    String
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
   deleted_at      DateTime?
 
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [company_id], references: [company_id], onDelete: Cascade)
+  
 
-  @@map("user_socialites")
+  @@map("company_socialites")
   @@unique([socialite_name, socialite_id])
 }
 
-model Employee {
-  id          Int       @id @default(autoincrement())
+model CompanySubscriptionTransactionHistory {
+  company_subscription_id   String   @id @default(uuid())
+  company_id                String
+  midtrans_transaction_id   String
+
+  total_amount              Float
+  gross_amount              Float
+
+  midtrans_admin_fee        Float
+  midtrans_status           String
+  midtrans_payment_method     String
+  midtrans_transaction_token String
+  midtrans_redirect_url     String
+  midtrans_paid_at          DateTime?
+
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+  deleted_at                DateTime?
+
+  company                    Company @relation(fields: [company_id], references: [company_id])
+
+  @@map("company_subscription_transaction_histories")
+}
+
+model Bank { // ADMIN USE ONLY
+  bank_id     String   @id @default(uuid())
   name        String
-  company_id  String
-  password    String
-  is_active   Boolean   @default(true)
-  salary      Float
-  created_at  DateTime  @default(now())
-  updated_at  DateTime  @updatedAt
+  code        String   @unique
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
   deleted_at  DateTime?
-  company User @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  employees   Employee[]
+
+  @@map("banks")
+}
+
+model Employee {
+  employee_id         String       @id @default(uuid())
+  name                String
+  company_id          String
+  password            String
+  is_active           Boolean       @default(true)
+  base_salary              Float
+  face_id             String?
+  bank_id             String?
+  bank_account_number      String?
+  tax_identification_number   String?
+
+  avatar_uri String?
+  last_login        DateTime?
+
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @updatedAt
+  deleted_at          DateTime?
+
+  company Company @relation(fields: [company_id], references: [company_id], onDelete: Cascade)
+  attendance_logs   AttendanceLog[]
+  bank Bank? @relation(fields: [bank_id], references: [bank_id])
+  attendances      EmployeeAttendance[]
+  payroll_logs     PayrollLog[]
+
   @@map("employees")
+}
+
+model EmployeeAttendance {
+  employee_attendance_id   String     @id @default(uuid())
+  employee_id              String
+  attendance_date           DateTime
+  check_in_time           DateTime
+  check_in_location      Unsupported("geography")
+  check_out_time          DateTime?
+  check_out_location     Unsupported("geography")?
+  total_work_hours        Float?
+  created_at              DateTime   @default(now())
+  updated_at              DateTime   @updatedAt
+  deleted_at              DateTime?
+
+  employee Employee @relation(fields: [employee_id], references: [employee_id], onDelete: Cascade)
+
+  @@unique([employee_id, attendance_date])
+  @@map("employee_attendances")
+}
+
+model PayrollLog {
+  payroll_log_id   String     @id @default(uuid())
+  employee_id      String
+  amount           Float
+  payroll_date     DateTime
+
+  created_at       DateTime   @default(now())
+  updated_at       DateTime   @updatedAt
+  deleted_at       DateTime?
+
+  employee Employee @relation(fields: [employee_id], references: [employee_id], onDelete: Cascade)
+  payroll_details PayrollDetail[]
+
+  @@map("payroll_logs")
+}
+
+model PayrollDetail {
+  payroll_detail_id   String     @id @default(uuid())
+  payroll_log_id      String
+  description        String
+  amount             Float
+
+  created_at         DateTime   @default(now())
+  updated_at         DateTime   @updatedAt
+  deleted_at         DateTime?
+
+  payroll_log PayrollLog @relation(fields: [payroll_log_id], references: [payroll_log_id], onDelete: Cascade)
+
+  @@map("payroll_details")
+
+}
+
+model AttendanceLog {
+  attendance_log_id   String     @id @default(uuid())
+  employee_id         String
+  log_type            Int        // 0: check-in, 1: check-out
+  timestamp           DateTime   @default(now())
+  created_at          DateTime   @default(now())
+  updated_at          DateTime   @updatedAt
+  deleted_at          DateTime?
+
+  employee Employee @relation(fields: [employee_id], references: [employee_id], onDelete: Cascade)
+
+  @@map("attendance_logs")
 }

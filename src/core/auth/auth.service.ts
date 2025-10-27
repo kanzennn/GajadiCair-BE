@@ -4,7 +4,7 @@ import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { hash, verify } from 'argon2';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { RegisterAuthDto } from './dto/register-auth.dto';
-import { GoogleOauthService } from 'src/common/services/prisma/google-oauth.service';
+import { GoogleOauthService } from 'src/common/services/google/google-oauth.service';
 import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
@@ -16,20 +16,29 @@ export class AuthService {
   ) {}
 
   async login(credentials: LoginAuthDto) {
-    const user = await this.prisma.user.findFirst({
+    const company = await this.prisma.company.findFirst({
       where: { email: credentials.email },
     });
 
-    if (!user || !user.password) {
+    if (!company || !company?.password) {
       throw new BadRequestException('Invalid credentials');
     }
 
-    const isPasswordValid = await verify(user.password, credentials.password);
+    const isPasswordValid = await verify(
+      company.password,
+      credentials.password,
+    );
+
     if (!isPasswordValid) {
       throw new BadRequestException('Invalid credentials');
     }
 
-    const payload = { sub: user.id, email: user.email };
+    await this.prisma.company.update({
+      where: { company_id: company.company_id },
+      data: { last_login: new Date() },
+    });
+
+    const payload = { sub: company.company_id, email: company.email };
 
     const access_token = await this.jwtService.signAsync(payload);
 
@@ -38,7 +47,7 @@ export class AuthService {
     });
 
     return {
-      user: { ...user, password: undefined },
+      company: { ...company, password: undefined },
       access_token,
       refresh_token,
     };
@@ -53,18 +62,18 @@ export class AuthService {
       throw new BadRequestException('Google account has no email');
     }
 
-    const socialiteRecord = await this.prisma.userSocialite.findFirst({
+    const socialiteRecord = await this.prisma.companySocialite.findFirst({
       where: { socialite_id: googleId, socialite_name: 'google' },
-      include: { user: true },
+      include: { company: true },
     });
 
     if (!socialiteRecord) {
-      let user = await this.prisma.user.findFirst({
+      let company = await this.prisma.company.findFirst({
         where: { email },
       });
 
-      if (!user) {
-        user = await this.prisma.user.create({
+      if (!company) {
+        company = await this.prisma.company.create({
           data: {
             email,
             name,
@@ -73,17 +82,17 @@ export class AuthService {
         });
       }
 
-      await this.prisma.userSocialite.create({
+      await this.prisma.companySocialite.create({
         data: {
-          user_id: user.id,
+          company_id: company.company_id,
           socialite_id: googleId,
           socialite_name: 'google',
         },
       });
     }
 
-    const user = socialiteRecord?.user;
-    const payloadJwt = { sub: user?.id, email: user?.email };
+    const company = socialiteRecord?.company;
+    const payloadJwt = { sub: company?.company_id, email: company?.email };
 
     const access_token = await this.jwtService.signAsync(payloadJwt);
 
@@ -92,21 +101,21 @@ export class AuthService {
     });
 
     return {
-      user: { ...user, password: undefined },
+      company: { ...company, password: undefined },
       access_token,
       refresh_token,
     };
   }
 
   async register(registerAuthDto: RegisterAuthDto) {
-    const existingUser = await this.prisma.user.findFirst({
+    const existingcompany = await this.prisma.company.findFirst({
       where: { email: registerAuthDto.email },
     });
 
-    if (existingUser) throw new BadRequestException('Email already in use');
+    if (existingcompany) throw new BadRequestException('Email already in use');
 
     const hashedPassword = await hash(registerAuthDto.password);
-    const user = await this.prisma.user.create({
+    const company = await this.prisma.company.create({
       data: {
         email: registerAuthDto.email,
         name: registerAuthDto.name,
@@ -114,6 +123,18 @@ export class AuthService {
       },
     });
 
-    return { ...user, password: undefined };
+    const payload = { sub: company.company_id, email: company.email };
+
+    const access_token = await this.jwtService.signAsync(payload);
+
+    const refresh_token = await this.jwtService.signAsync(payload, {
+      expiresIn: '7d',
+    });
+
+    return {
+      company: { ...company, password: undefined },
+      access_token,
+      refresh_token,
+    };
   }
 }

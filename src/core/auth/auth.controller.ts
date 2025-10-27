@@ -16,7 +16,7 @@ export class AuthControllerV1 {
     @Body() loginAuthDto: LoginAuthDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { user, access_token, refresh_token } =
+    const { company, access_token, refresh_token } =
       await this.authService.login(loginAuthDto);
 
     res.setHeader('Authorization', `Bearer ${access_token}`);
@@ -30,7 +30,7 @@ export class AuthControllerV1 {
       maxAge: 7 * 24 * 60 * 60, // 7 hari
     });
 
-    return successResponse(user, 'Login successful');
+    return successResponse(company, 'Login successful');
   }
 
   @Post('/login/google')
@@ -38,28 +38,42 @@ export class AuthControllerV1 {
     @Body() loginWithGoogleAuthDto: LoginWithGoogleAuthDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { user, access_token, refresh_token } =
+    const { company, access_token, refresh_token } =
       await this.authService.googleLogin(loginWithGoogleAuthDto.id_token);
 
     res.setHeader('Authorization', `Bearer ${access_token}`);
 
     res.cookie('refresh_token', refresh_token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      // secure: process.env.NODE_ENV === 'production',
+      secure: false,
+      sameSite: 'none',
       path: '/',
       maxAge: 7 * 24 * 60 * 60, // 7 hari
     });
 
-    return successResponse(user, 'Login successful');
+    return successResponse(company, 'Login successful');
   }
 
   @Post('register')
-  async register(@Body() registerAuthDto: RegisterAuthDto) {
-    return successResponse(
-      await this.authService.register(registerAuthDto),
-      'Register successful',
-      201,
-    );
+  async register(
+    @Body() registerAuthDto: RegisterAuthDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { company, access_token, refresh_token } =
+      await this.authService.register(registerAuthDto);
+
+    res.setHeader('Authorization', `Bearer ${access_token}`);
+
+    res.cookie('refresh_token', refresh_token, {
+      httpOnly: true,
+      // secure: process.env.NODE_ENV === 'production',
+      secure: false,
+      sameSite: 'none',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60, // 7 hari
+    });
+
+    return successResponse(company, 'Login successful', 201);
   }
 }

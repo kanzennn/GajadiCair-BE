@@ -3,7 +3,7 @@ import { AuthService } from './auth.service';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { hash } from 'argon2';
-import { GoogleOauthService } from 'src/common/services/prisma/google-oauth.service';
+import { GoogleOauthService } from 'src/common/services/google-oauth.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 
 describe('AuthService', () => {
