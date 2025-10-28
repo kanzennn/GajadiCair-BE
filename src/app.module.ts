@@ -11,6 +11,9 @@ import appConfig from './config/app.config';
 import s3Config from './config/s3.config';
 import { AuthModule } from './core/auth/auth.module';
 import { LoggerMiddleware } from './common/middleware/logger/logger.middleware';
+import { CompanyModule } from './core/company/company.module';
+import { EmployeeModule } from './core/employee/employee.module';
+import { BankModule } from './core/bank/bank.module';
 
 @Module({
   imports: [
@@ -19,6 +22,9 @@ import { LoggerMiddleware } from './common/middleware/logger/logger.middleware';
       load: [appConfig, s3Config],
     }),
     AuthModule,
+    CompanyModule,
+    EmployeeModule,
+    BankModule,
   ],
   controllers: [AppController],
   providers: [AppService],

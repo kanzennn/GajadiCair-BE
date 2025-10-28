@@ -1,23 +1,38 @@
-import { Controller, Post, Body, Res, HttpCode } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Res,
+  HttpCode,
+  Get,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { RegisterAuthDto } from './dto/register-auth.dto';
 import { LoginWithGoogleAuthDto } from './dto/login-with-google.dto';
 import type { Response } from 'express';
 import { successResponse } from 'src/utils/response.utils';
+import { TokenPayloadDto } from './dto/token-payload.dto';
+import { CompanyService } from '../company/company.service';
+import { CompanyAuthGuard } from './guards/company.guard';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthControllerV1 {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly companyService: CompanyService,
+  ) {}
 
-  @Post('login')
+  @Post('company/login')
   @HttpCode(200)
-  async login(
+  async loginCompany(
     @Body() loginAuthDto: LoginAuthDto,
     @Res({ passthrough: true }) res: Response,
   ) {
     const { company, access_token, refresh_token } =
-      await this.authService.login(loginAuthDto);
+      await this.authService.loginCompany(loginAuthDto);
 
     res.setHeader('Authorization', `Bearer ${access_token}`);
 
@@ -33,13 +48,15 @@ export class AuthControllerV1 {
     return successResponse(company, 'Login successful');
   }
 
-  @Post('/login/google')
-  async loginWithGoogle(
+  @Post('company/login/google')
+  async loginWithGoogleCompany(
     @Body() loginWithGoogleAuthDto: LoginWithGoogleAuthDto,
     @Res({ passthrough: true }) res: Response,
   ) {
     const { company, access_token, refresh_token } =
-      await this.authService.googleLogin(loginWithGoogleAuthDto.id_token);
+      await this.authService.googleLoginCompany(
+        loginWithGoogleAuthDto.id_token,
+      );
 
     res.setHeader('Authorization', `Bearer ${access_token}`);
 
@@ -55,13 +72,13 @@ export class AuthControllerV1 {
     return successResponse(company, 'Login successful');
   }
 
-  @Post('register')
-  async register(
+  @Post('company/register')
+  async registerCompany(
     @Body() registerAuthDto: RegisterAuthDto,
     @Res({ passthrough: true }) res: Response,
   ) {
     const { company, access_token, refresh_token } =
-      await this.authService.register(registerAuthDto);
+      await this.authService.registerCompany(registerAuthDto);
 
     res.setHeader('Authorization', `Bearer ${access_token}`);
 
@@ -75,5 +92,18 @@ export class AuthControllerV1 {
     });
 
     return successResponse(company, 'Login successful', 201);
+  }
+
+  @Get('company/profile')
+  @HttpCode(200)
+  @UseGuards(CompanyAuthGuard)
+  async getProfile(@Req() req: Request & { user: TokenPayloadDto }) {
+    return successResponse(
+      {
+        ...(await this.companyService.getCompanyById(req.user.sub)),
+        password: undefined,
+      },
+      'Profile fetched successfully',
+    );
   }
 }

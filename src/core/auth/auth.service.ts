@@ -15,7 +15,7 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async login(credentials: LoginAuthDto) {
+  async loginCompany(credentials: LoginAuthDto) {
     const company = await this.prisma.company.findFirst({
       where: { email: credentials.email },
     });
@@ -38,7 +38,11 @@ export class AuthService {
       data: { last_login: new Date() },
     });
 
-    const payload = { sub: company.company_id, email: company.email };
+    const payload = {
+      sub: company.company_id,
+      email: company.email,
+      role: 'company',
+    };
 
     const access_token = await this.jwtService.signAsync(payload);
 
@@ -53,7 +57,7 @@ export class AuthService {
     };
   }
 
-  async googleLogin(idToken: string) {
+  async googleLoginCompany(idToken: string) {
     const payload = await this.googleOauthService.verifyToken(idToken);
 
     const { sub: googleId, email, name, picture } = payload;
@@ -92,7 +96,17 @@ export class AuthService {
     }
 
     const company = socialiteRecord?.company;
-    const payloadJwt = { sub: company?.company_id, email: company?.email };
+
+    await this.prisma.company.update({
+      where: { company_id: company?.company_id },
+      data: { last_login: new Date() },
+    });
+
+    const payloadJwt = {
+      sub: company?.company_id,
+      email: company?.email,
+      role: 'company',
+    };
 
     const access_token = await this.jwtService.signAsync(payloadJwt);
 
@@ -107,7 +121,7 @@ export class AuthService {
     };
   }
 
-  async register(registerAuthDto: RegisterAuthDto) {
+  async registerCompany(registerAuthDto: RegisterAuthDto) {
     const existingcompany = await this.prisma.company.findFirst({
       where: { email: registerAuthDto.email },
     });
@@ -123,7 +137,16 @@ export class AuthService {
       },
     });
 
-    const payload = { sub: company.company_id, email: company.email };
+    await this.prisma.company.update({
+      where: { company_id: company.company_id },
+      data: { last_login: new Date() },
+    });
+
+    const payload = {
+      sub: company.company_id,
+      email: company.email,
+      role: 'company',
+    };
 
     const access_token = await this.jwtService.signAsync(payload);
 

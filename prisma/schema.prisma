@@ -128,7 +128,7 @@ model CompanySubscriptionTransactionHistory {
 model Bank { // ADMIN USE ONLY
   bank_id     String   @id @default(uuid())
   name        String
-  code        String   @unique
+  code        String
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
   deleted_at  DateTime?
@@ -141,6 +141,7 @@ model Bank { // ADMIN USE ONLY
 model Employee {
   employee_id         String       @id @default(uuid())
   name                String
+  email               String
   company_id          String
   password            String
   is_active           Boolean       @default(true)
