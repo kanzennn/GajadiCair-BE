@@ -7,6 +7,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { jwtConfig } from 'src/config/jwt.config';
 import { JwtCompanyStrategy } from './strategies/jwt-company.strategy';
 import { CompanyService } from '../company/company.service';
+import { EmployeeService } from '../employee/employee.service';
+import { JwtEmployeeStrategy } from './strategies/jwt-employee.strategy';
 
 @Module({
   imports: [
@@ -21,9 +23,11 @@ import { CompanyService } from '../company/company.service';
     AuthService,
     PrismaService,
     CompanyService,
+    EmployeeService,
     GoogleOauthService,
     JwtCompanyStrategy,
+    JwtEmployeeStrategy,
   ],
-  exports: [JwtCompanyStrategy],
+  exports: [JwtCompanyStrategy, JwtEmployeeStrategy],
 })
 export class AuthModule {}
