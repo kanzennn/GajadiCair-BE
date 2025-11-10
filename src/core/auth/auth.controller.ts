@@ -17,12 +17,16 @@ import { successResponse } from 'src/utils/response.utils';
 import { TokenPayloadDto } from './dto/token-payload.dto';
 import { CompanyService } from '../company/company.service';
 import { CompanyAuthGuard } from './guards/company.guard';
+import { LoginEmployeeAuthDto } from './dto/login-employee-auth.dto';
+import { EmployeeAuthGuard } from './guards/employee.guard';
+import { EmployeeService } from '../employee/employee.service';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthControllerV1 {
   constructor(
     private readonly authService: AuthService,
     private readonly companyService: CompanyService,
+    private readonly employeeService: EmployeeService,
   ) {}
 
   @Post('company/login')
@@ -101,6 +105,43 @@ export class AuthControllerV1 {
     return successResponse(
       {
         ...(await this.companyService.getCompanyById(req.user.sub)),
+        password: undefined,
+      },
+      'Profile fetched successfully',
+    );
+  }
+
+  @Post('employee/login')
+  @HttpCode(200)
+  async loginEmployee(
+    @Body() loginAuthDto: LoginEmployeeAuthDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { employee, access_token, refresh_token } =
+      await this.authService.loginEmployee(loginAuthDto);
+
+    res.setHeader('Authorization', `Bearer ${access_token}`);
+
+    res.cookie('refresh_token', refresh_token, {
+      httpOnly: true,
+      // secure: process.env.NODE_ENV === 'production',
+      secure: false,
+      sameSite: 'none',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60, // 7 hari
+    });
+
+    return successResponse(employee, 'Login successful');
+  }
+
+  @Get('employee/profile')
+  @HttpCode(200)
+  @UseGuards(EmployeeAuthGuard)
+  async getEmployeeProfile(@Req() req: Request & { user: TokenPayloadDto }) {
+    console.log("memek");
+    return successResponse(
+      {
+        ...(await this.employeeService.getEmployeeById(req.user.sub)),
         password: undefined,
       },
       'Profile fetched successfully',

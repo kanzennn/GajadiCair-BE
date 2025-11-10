@@ -6,6 +6,7 @@ import { BadRequestException } from 'src/common/exceptions/badRequest.exception'
 import { RegisterAuthDto } from './dto/register-auth.dto';
 import { GoogleOauthService } from 'src/common/services/google/google-oauth.service';
 import { JwtService } from '@nestjs/jwt';
+import { LoginEmployeeAuthDto } from './dto/login-employee-auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -156,6 +157,53 @@ export class AuthService {
 
     return {
       company: { ...company, password: undefined },
+      access_token,
+      refresh_token,
+    };
+  }
+
+  async loginEmployee(credentials: LoginEmployeeAuthDto) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { employee_id: credentials.employee_id },
+    });
+
+    if (
+      !employee ||
+      !employee?.password ||
+      employee.company_id !== credentials.company_id ||
+      employee.is_active === false
+    ) {
+      throw new BadRequestException('Invalid credentials');
+    }
+
+    const isPasswordValid = await verify(
+      employee.password,
+      credentials.password,
+    );
+
+    if (!isPasswordValid) {
+      throw new BadRequestException('Invalid credentials');
+    }
+
+    await this.prisma.employee.update({
+      where: { employee_id: employee.employee_id },
+      data: { last_login: new Date() },
+    });
+
+    const payload = {
+      sub: employee.employee_id,
+      email: employee.email,
+      role: 'employee',
+    };
+
+    const access_token = await this.jwtService.signAsync(payload);
+
+    const refresh_token = await this.jwtService.signAsync(payload, {
+      expiresIn: '7d',
+    });
+
+    return {
+      employee: { ...employee, password: undefined },
       access_token,
       refresh_token,
     };
