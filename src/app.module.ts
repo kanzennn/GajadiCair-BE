@@ -14,12 +14,13 @@ import { LoggerMiddleware } from './common/middleware/logger/logger.middleware';
 import { CompanyModule } from './core/company/company.module';
 import { EmployeeModule } from './core/employee/employee.module';
 import { BankModule } from './core/bank/bank.module';
+import mailerConfig from './config/mailer.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, s3Config],
+      load: [appConfig, s3Config, mailerConfig],
     }),
     AuthModule,
     CompanyModule,

@@ -6,12 +6,13 @@ import { GoogleOauthService } from 'src/common/services/google/google-oauth.serv
 import { JwtModule } from '@nestjs/jwt';
 import { jwtConfig } from 'src/config/jwt.config';
 import { JwtCompanyStrategy } from './strategies/jwt-company.strategy';
-import { CompanyService } from '../company/company.service';
-import { EmployeeService } from '../employee/employee.service';
-import { JwtEmployeeStrategy } from './strategies/jwt-employee.strategy';
+import { CompanyModule } from '../company/company.module';
+import { EmployeeModule } from '../employee/employee.module';
 
 @Module({
   imports: [
+    CompanyModule,
+    EmployeeModule,
     JwtModule.register({
       global: true,
       secret: jwtConfig.secret,
@@ -22,12 +23,9 @@ import { JwtEmployeeStrategy } from './strategies/jwt-employee.strategy';
   providers: [
     AuthService,
     PrismaService,
-    CompanyService,
-    EmployeeService,
     GoogleOauthService,
     JwtCompanyStrategy,
-    JwtEmployeeStrategy,
   ],
-  exports: [JwtCompanyStrategy, JwtEmployeeStrategy],
+  exports: [JwtCompanyStrategy],
 })
 export class AuthModule {}

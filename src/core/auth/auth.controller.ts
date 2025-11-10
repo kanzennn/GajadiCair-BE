@@ -138,7 +138,6 @@ export class AuthControllerV1 {
   @HttpCode(200)
   @UseGuards(EmployeeAuthGuard)
   async getEmployeeProfile(@Req() req: Request & { user: TokenPayloadDto }) {
-    console.log("memek");
     return successResponse(
       {
         ...(await this.employeeService.getEmployeeById(req.user.sub)),

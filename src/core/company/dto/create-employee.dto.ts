@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class CreateEmployeeDto {
   @IsString()
@@ -22,4 +22,7 @@ export class CreateEmployeeDto {
   @IsString()
   @IsOptional()
   tax_identification_number?: string;
+
+  @IsBoolean()
+  send_to_email?: boolean;
 }
