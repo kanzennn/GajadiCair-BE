@@ -61,6 +61,7 @@ async function bootstrap() {
     }),
   );
 
+  app.use(cookieParser());
   app.use(helmet());
   await app.listen(appConfig().APP_PORT ?? 3000);
   const logger = new Logger();

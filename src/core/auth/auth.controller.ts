@@ -12,7 +12,7 @@ import { AuthService } from './auth.service';
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { RegisterAuthDto } from './dto/register-auth.dto';
 import { LoginWithGoogleAuthDto } from './dto/login-with-google.dto';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { successResponse } from 'src/utils/response.utils';
 import { TokenPayloadDto } from './dto/token-payload.dto';
 import { CompanyService } from '../company/company.service';
@@ -20,6 +20,7 @@ import { CompanyAuthGuard } from './guards/company.guard';
 import { LoginEmployeeAuthDto } from './dto/login-employee-auth.dto';
 import { EmployeeAuthGuard } from './guards/employee.guard';
 import { EmployeeService } from '../employee/employee.service';
+import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthControllerV1 {
@@ -109,6 +110,26 @@ export class AuthControllerV1 {
       },
       'Profile fetched successfully',
     );
+  }
+
+  @Get('company/refresh-token')
+  @HttpCode(200)
+  async refreshCompanyToken(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refresh_token = req.cookies['refresh_token'] as string;
+
+    if (!refresh_token) {
+      throw new BadRequestException('Refresh token not found');
+    }
+
+    const { access_token } =
+      await this.authService.refreshCompanyToken(refresh_token);
+
+    res.setHeader('Authorization', `Bearer ${access_token}`);
+
+    return successResponse(null, 'Token refreshed successfully');
   }
 
   @Post('employee/login')

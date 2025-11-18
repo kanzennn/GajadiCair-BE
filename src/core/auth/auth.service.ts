@@ -7,6 +7,7 @@ import { RegisterAuthDto } from './dto/register-auth.dto';
 import { GoogleOauthService } from 'src/common/services/google/google-oauth.service';
 import { JwtService } from '@nestjs/jwt';
 import { LoginEmployeeAuthDto } from './dto/login-employee-auth.dto';
+import { TokenPayloadDto } from './dto/token-payload.dto';
 
 @Injectable()
 export class AuthService {
@@ -45,11 +46,17 @@ export class AuthService {
       role: 'company',
     };
 
-    const access_token = await this.jwtService.signAsync(payload);
-
-    const refresh_token = await this.jwtService.signAsync(payload, {
-      expiresIn: '7d',
+    const access_token = await this.jwtService.signAsync({
+      ...payload,
+      type: 'access',
     });
+
+    const refresh_token = await this.jwtService.signAsync(
+      { ...payload, type: 'refresh' },
+      {
+        expiresIn: '7d',
+      },
+    );
 
     return {
       company: { ...company, password: undefined },
@@ -109,11 +116,17 @@ export class AuthService {
       role: 'company',
     };
 
-    const access_token = await this.jwtService.signAsync(payloadJwt);
-
-    const refresh_token = await this.jwtService.signAsync(payloadJwt, {
-      expiresIn: '7d',
+    const access_token = await this.jwtService.signAsync({
+      ...payloadJwt,
+      type: 'access',
     });
+
+    const refresh_token = await this.jwtService.signAsync(
+      { ...payloadJwt, type: 'refresh' },
+      {
+        expiresIn: '7d',
+      },
+    );
 
     return {
       company: { ...company, password: undefined },
@@ -160,6 +173,31 @@ export class AuthService {
       access_token,
       refresh_token,
     };
+  }
+
+  async refreshCompanyToken(refresh_token: string) {
+    const payload: TokenPayloadDto = await this.jwtService.verify(
+      refresh_token,
+      {
+        secret: process.env.JWT_SECRET,
+      },
+    );
+
+    if (payload.role !== 'company') {
+      throw new BadRequestException('Invalid refresh token');
+    }
+
+    if (payload.type !== 'refresh') {
+      throw new BadRequestException('Invalid refresh token');
+    }
+
+    const access_token = await this.jwtService.signAsync({
+      sub: payload.sub,
+      email: payload.email,
+      role: 'company',
+      type: 'access',
+    });
+    return { access_token };
   }
 
   async loginEmployee(credentials: LoginEmployeeAuthDto) {
