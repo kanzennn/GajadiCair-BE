@@ -39,8 +39,6 @@ export class AuthControllerV1 {
     const { company, access_token, refresh_token } =
       await this.authService.loginCompany(loginAuthDto);
 
-    res.setHeader('Authorization', `Bearer ${access_token}`);
-
     res.cookie('refresh_token', refresh_token, {
       httpOnly: true,
       // secure: process.env.NODE_ENV === 'production',
@@ -50,7 +48,7 @@ export class AuthControllerV1 {
       maxAge: 7 * 24 * 60 * 60, // 7 hari
     });
 
-    return successResponse(company, 'Login successful');
+    return successResponse({ company, access_token }, 'Login successful');
   }
 
   @Post('company/login/google')
@@ -63,8 +61,6 @@ export class AuthControllerV1 {
         loginWithGoogleAuthDto.id_token,
       );
 
-    res.setHeader('Authorization', `Bearer ${access_token}`);
-
     res.cookie('refresh_token', refresh_token, {
       httpOnly: true,
       // secure: process.env.NODE_ENV === 'production',
@@ -74,7 +70,7 @@ export class AuthControllerV1 {
       maxAge: 7 * 24 * 60 * 60, // 7 hari
     });
 
-    return successResponse(company, 'Login successful');
+    return successResponse({ company, access_token }, 'Login successful');
   }
 
   @Post('company/register')
@@ -85,8 +81,6 @@ export class AuthControllerV1 {
     const { company, access_token, refresh_token } =
       await this.authService.registerCompany(registerAuthDto);
 
-    res.setHeader('Authorization', `Bearer ${access_token}`);
-
     res.cookie('refresh_token', refresh_token, {
       httpOnly: true,
       // secure: process.env.NODE_ENV === 'production',
@@ -96,7 +90,7 @@ export class AuthControllerV1 {
       maxAge: 7 * 24 * 60 * 60, // 7 hari
     });
 
-    return successResponse(company, 'Login successful', 201);
+    return successResponse({ company, access_token }, 'Login successful', 201);
   }
 
   @Get('company/profile')
@@ -114,10 +108,7 @@ export class AuthControllerV1 {
 
   @Get('company/refresh-token')
   @HttpCode(200)
-  async refreshCompanyToken(
-    @Req() req: Request,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async refreshCompanyToken(@Req() req: Request) {
     const refresh_token = req.cookies['refresh_token'] as string;
 
     if (!refresh_token) {
@@ -127,9 +118,7 @@ export class AuthControllerV1 {
     const { access_token } =
       await this.authService.refreshCompanyToken(refresh_token);
 
-    res.setHeader('Authorization', `Bearer ${access_token}`);
-
-    return successResponse(null, 'Token refreshed successfully');
+    return successResponse({ access_token }, 'Token refreshed successfully');
   }
 
   @Post('employee/login')
@@ -141,8 +130,6 @@ export class AuthControllerV1 {
     const { employee, access_token, refresh_token } =
       await this.authService.loginEmployee(loginAuthDto);
 
-    res.setHeader('Authorization', `Bearer ${access_token}`);
-
     res.cookie('refresh_token', refresh_token, {
       httpOnly: true,
       // secure: process.env.NODE_ENV === 'production',
@@ -152,7 +139,7 @@ export class AuthControllerV1 {
       maxAge: 7 * 24 * 60 * 60, // 7 hari
     });
 
-    return successResponse(employee, 'Login successful');
+    return successResponse({ employee, access_token }, 'Login successful');
   }
 
   @Get('employee/profile')
