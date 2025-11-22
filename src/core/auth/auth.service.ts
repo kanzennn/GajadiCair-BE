@@ -234,11 +234,20 @@ export class AuthService {
       role: 'employee',
     };
 
-    const access_token = await this.jwtService.signAsync(payload);
-
-    const refresh_token = await this.jwtService.signAsync(payload, {
-      expiresIn: '7d',
+    const access_token = await this.jwtService.signAsync({
+      ...payload,
+      type: 'access',
     });
+
+    const refresh_token = await this.jwtService.signAsync(
+      {
+        ...payload,
+        type: 'refresh',
+      },
+      {
+        expiresIn: '7d',
+      },
+    );
 
     return {
       employee: { ...employee, password: undefined },
