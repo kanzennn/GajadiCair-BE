@@ -154,4 +154,19 @@ export class AuthControllerV1 {
       'Profile fetched successfully',
     );
   }
+
+  @Get('employee/refresh-token')
+  @HttpCode(200)
+  async refreshEmployeeToken(@Req() req: Request) {
+    const refresh_token = req.cookies['refresh_token'] as string;
+
+    if (!refresh_token) {
+      throw new BadRequestException('Refresh token not found');
+    }
+
+    const { access_token } =
+      await this.authService.refreshEmployeeToken(refresh_token);
+
+    return successResponse({ access_token }, 'Token refreshed successfully');
+  }
 }

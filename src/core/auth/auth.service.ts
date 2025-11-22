@@ -246,4 +246,29 @@ export class AuthService {
       refresh_token,
     };
   }
+
+  async refreshEmployeeToken(refresh_token: string) {
+    const payload: TokenPayloadDto = await this.jwtService.verify(
+      refresh_token,
+      {
+        secret: process.env.JWT_SECRET,
+      },
+    );
+
+    if (payload.role !== 'employee') {
+      throw new BadRequestException('Invalid refresh token');
+    }
+
+    if (payload.type !== 'refresh') {
+      throw new BadRequestException('Invalid refresh token');
+    }
+
+    const access_token = await this.jwtService.signAsync({
+      sub: payload.sub,
+      email: payload.email,
+      role: 'employee',
+      type: 'access',
+    });
+    return { access_token };
+  }
 }
