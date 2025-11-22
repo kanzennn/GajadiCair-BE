@@ -14,6 +14,7 @@ import { LoggerMiddleware } from './common/middleware/logger/logger.middleware';
 import { CompanyModule } from './core/company/company.module';
 import { EmployeeModule } from './core/employee/employee.module';
 import { BankModule } from './core/bank/bank.module';
+import { FaceRecognitionModule } from './core/face-recognition/face-recognition.module';
 import mailerConfig from './config/mailer.config';
 
 @Module({
@@ -26,6 +27,7 @@ import mailerConfig from './config/mailer.config';
     CompanyModule,
     EmployeeModule,
     BankModule,
+    FaceRecognitionModule,
   ],
   controllers: [AppController],
   providers: [AppService],
