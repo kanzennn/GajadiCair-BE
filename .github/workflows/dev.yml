@@ -67,7 +67,7 @@ jobs:
               -e MAILER_USER="${{ secrets.MAILER_USER }}" \
               -e MAILER_PASSWORD="${{ secrets.MAILER_PASSWORD }}" \
               -e MAILER_TLS_REJECT_UNAUTHORIZED="${{ vars.MAILER_TLS_REJECT_UNAUTHORIZED }}" \
-              -e PYTHON_FACEREC_URL="${{ vars.PYTHON_FACEREC_URL }}" \
+              -e PYTHON_FACEREC_URL="${{ secrets.PYTHON_FACEREC_URL }}" \
               -p ${{ vars.PORT }}:3000 \
               kanzen523/gajadicair-api:latest
 
