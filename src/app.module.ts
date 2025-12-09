@@ -15,19 +15,24 @@ import { CompanyModule } from './core/company/company.module';
 import { EmployeeModule } from './core/employee/employee.module';
 import { BankModule } from './core/bank/bank.module';
 import { FaceRecognitionModule } from './core/face-recognition/face-recognition.module';
+import { SubscriptionModule } from './core/subscription/subscription.module';
 import mailerConfig from './config/mailer.config';
+import midtransConfig from './config/midtrans.config';
+import { MidtransModule } from './common/services/midtrans/midtrans.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, s3Config, mailerConfig],
+      load: [appConfig, s3Config, mailerConfig, midtransConfig],
     }),
     AuthModule,
     CompanyModule,
     EmployeeModule,
     BankModule,
     FaceRecognitionModule,
+    SubscriptionModule,
+    MidtransModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -104,14 +104,15 @@ model CompanySocialite {
 model CompanySubscriptionTransactionHistory {
   company_subscription_id   String   @id @default(uuid())
   company_id                String
-  midtrans_transaction_id   String
+  midtrans_transaction_id   String?
 
-  total_amount              Float
   gross_amount              Float
+  level_plan                Int
+  plan_duration_months      Int
 
-  midtrans_admin_fee        Float
-  midtrans_status           String
-  midtrans_payment_method     String
+  midtrans_admin_fee        Float?
+  midtrans_status           String?
+  midtrans_payment_method     String?
   midtrans_transaction_token String
   midtrans_redirect_url     String
   midtrans_paid_at          DateTime?
