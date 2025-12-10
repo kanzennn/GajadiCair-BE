@@ -147,7 +147,7 @@ model Employee {
   password            String
   is_active           Boolean       @default(true)
   base_salary              Float
-  face_id             String?
+  is_face_enrolled             Boolean @default(false)
   bank_id             String?
   bank_account_number      String?
   tax_identification_number   String?
