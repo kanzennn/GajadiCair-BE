@@ -2,11 +2,11 @@ name: 🚀 CI/CD Development
 
 on:
   push:
-    branches:
-      - dev
+    branches: [dev]
 
 jobs:
-  build-and-deploy:
+  build-and-push:
+    name: 🐳 Build & Push Image
     runs-on: ubuntu-latest
     environment: Development
 
@@ -31,6 +31,14 @@ jobs:
       - name: 📤 Push Docker Image
         run: docker push kanzen523/gajadicair-api:latest
 
+
+  deploy:
+    name: 🚢 Deploy to VPS
+    runs-on: ubuntu-latest
+    environment: Development
+    needs: build-and-push
+
+    steps:
       - name: 🚢 Deploy to VPS Server
         uses: appleboy/ssh-action@master
         with:
