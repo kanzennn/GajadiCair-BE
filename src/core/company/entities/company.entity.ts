@@ -18,6 +18,10 @@ export class Company {
   attendance_tolerance_minutes?: number | null;
   payroll_day_of_month?: number | null;
 
+  attendance_location_enabled?: boolean | null;
+  attendance_location?: string | null;
+  attendance_radius_meters?: number | null;
+
   last_login?: Date | null;
   created_at: Date;
   updated_at: Date;

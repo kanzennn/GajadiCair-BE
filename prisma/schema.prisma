@@ -36,6 +36,10 @@ model Company {
 
   payroll_day_of_month         Int?         // tanggal gajian setiap bulan (contoh: 25)
 
+  attendance_location_enabled  Boolean     @default(false)
+  attendance_location      Unsupported("geography")?
+  attendance_radius_meters      Int? 
+
   last_login        DateTime?
 
   created_at  DateTime @default(now())
@@ -171,9 +175,9 @@ model Employee {
 model EmployeeAttendance {
   employee_attendance_id   String     @id @default(uuid())
   employee_id              String
-  attendance_date           DateTime
+  attendance_date           DateTime @db.Date
   check_in_time           DateTime
-  check_in_location      Unsupported("geography")
+  check_in_location      Unsupported("geography")?
   check_out_time          DateTime?
   check_out_location     Unsupported("geography")?
   total_work_hours        Float?

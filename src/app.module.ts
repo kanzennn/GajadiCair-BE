@@ -19,6 +19,7 @@ import { SubscriptionModule } from './core/subscription/subscription.module';
 import mailerConfig from './config/mailer.config';
 import midtransConfig from './config/midtrans.config';
 import { MidtransModule } from './common/services/midtrans/midtrans.module';
+import { AttendanceModule } from './core/attendance/attendance.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { MidtransModule } from './common/services/midtrans/midtrans.module';
     FaceRecognitionModule,
     SubscriptionModule,
     MidtransModule,
+    AttendanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],
