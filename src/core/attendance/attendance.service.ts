@@ -5,12 +5,14 @@ import { startOfDay } from 'src/utils/date.utils';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
+import { EmployeeService } from '../employee/employee.service';
 
 @Injectable()
 export class AttendanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly faceRecognitionService: FaceRecognitionService,
+    private readonly employeeService: EmployeeService,
   ) {}
 
   async checkInFace(
@@ -264,7 +266,10 @@ export class AttendanceService {
       }
 
       const updated = await tx.employeeAttendance.update({
-        where: { employee_attendance_id: existing.employee_attendance_id },
+        where: {
+          employee_attendance_id: existing.employee_attendance_id,
+          status: 'PRESENT',
+        },
         data: {
           check_out_time: nowTime,
           total_work_hours,
@@ -316,6 +321,64 @@ export class AttendanceService {
     });
 
     return attendance;
+  }
+
+  async canEmployeeCheckOut(employeeId: string) {
+    const isEmployee =
+      await this.employeeService.getEmployeeByIdWithCompany(employeeId);
+
+    if (!isEmployee) {
+      throw new BadRequestException('Employee not found');
+    }
+
+    const company = isEmployee.company;
+
+    const nowTime = new Date();
+
+    const minHours = company.minimum_hours_per_day ?? 0;
+
+    const attendance = await this.getTodayAttendanceStatus(employeeId);
+
+    if (!attendance) {
+      return {
+        can_check_out: false,
+        min_hours: minHours,
+        worked_hours: 0,
+        reason: 'Not checked in today',
+      };
+    }
+
+    if (attendance.check_out_time) {
+      return {
+        can_check_out: false,
+        min_hours: minHours,
+        worked_hours: attendance.total_work_hours,
+        reason: 'Already checked out today',
+      };
+    }
+
+    const total_work_hours = this.calcEffectiveWorkedHours({
+      now: nowTime,
+      checkIn: attendance.check_in_time,
+      isLate: attendance.is_late,
+      companyWorkStart: company.work_start_time,
+    });
+
+    if (minHours > 0 && total_work_hours < minHours) {
+      return {
+        can_check_out: false,
+        min_hours: minHours,
+        worked_hours: total_work_hours,
+        reason: `Minimum work hours not met. Required: ${minHours} hours, Worked: ${total_work_hours.toFixed(2)} hours.`,
+      };
+    }
+
+    return {
+      can_check_out: true,
+      in_hours: minHours,
+      worked_hours: total_work_hours,
+      reason: null,
+    };
   }
 
   private calculateLateMinutes(

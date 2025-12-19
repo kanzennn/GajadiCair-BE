@@ -171,7 +171,7 @@ export class FaceRecognitionService {
           headers: form.getHeaders(),
         },
       );
-
+      console.log(res.data);
       if (res.data.employee_id !== employeeId) {
         throw new BadRequestException('Face does not match');
       }

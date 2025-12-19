@@ -85,4 +85,16 @@ export class AttendanceController {
       'Today attendance status retrieved successfully',
     );
   }
+
+  @Get('employee/attendance/check-out-check')
+  @UseGuards(EmployeeAuthGuard)
+  async checkIfEmployeeCanCheckOut(
+    @Req() req: Request & { user: TokenPayloadDto },
+  ) {
+    const data = await this.attendanceService.canEmployeeCheckOut(req.user.sub);
+    return successResponse(
+      data,
+      'Check-out eligibility retrieved successfully',
+    );
+  }
 }

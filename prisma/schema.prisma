@@ -209,7 +209,6 @@ model EmployeeAttendance {
   @@map("employee_attendances")
 }
 
-
 model PayrollLog {
   payroll_log_id   String     @id @default(uuid())
   employee_id      String
