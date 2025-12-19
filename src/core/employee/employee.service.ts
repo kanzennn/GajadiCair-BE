@@ -4,6 +4,7 @@ import { CreateEmployeeDto } from '../company/dto/create-employee.dto';
 import { UpdateEmployeeDto } from '../company/dto/update-employee.dto';
 import { hash } from 'argon2';
 import { CustomMailerService } from 'src/common/services/mailer/mailer.service';
+import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 
 @Injectable()
 export class EmployeeService {
@@ -16,6 +17,15 @@ export class EmployeeService {
     company_id: string,
     createEmployeeDto: CreateEmployeeDto,
   ) {
+    const isUsernameExist = await this.getEmployeeByUsernameByCompany(
+      createEmployeeDto.username,
+      company_id,
+    );
+
+    if (isUsernameExist) {
+      throw new BadRequestException('Username already taken');
+    }
+
     const plainPassword = createEmployeeDto.password;
     createEmployeeDto.password = await hash(createEmployeeDto.password);
     const sendToEmail = createEmployeeDto.send_to_email;
@@ -40,8 +50,8 @@ export class EmployeeService {
         {
           employeeName: data.name,
           companyName: data.company.name,
-          companyCode: data.company_id,
-          employeeCode: data.employee_id,
+          companyCode: data.company.company_identifier,
+          employeeUsername: data.username,
           password: plainPassword,
           year: new Date().getFullYear(),
           loginUrl: 'https://gajadicairbrooo.netlify.app',
@@ -70,14 +80,69 @@ export class EmployeeService {
     employee_id: string,
     updateData: UpdateEmployeeDto,
   ) {
+    if (updateData.username) {
+      const isUsernameExist = await this.getEmployeeByUsernameByCompany(
+        updateData.username,
+        company_id,
+      );
+
+      if (isUsernameExist && isUsernameExist.employee_id !== employee_id) {
+        throw new BadRequestException('Username already taken');
+      }
+    }
+
+    let plainPassword: string | undefined = undefined;
     if (updateData.password) {
+      plainPassword = updateData.password;
       updateData.password = await hash(updateData.password);
     }
 
-    return await this.prisma.employee.update({
+    const sendToEmail = updateData.send_to_email;
+
+    delete updateData.send_to_email;
+
+    const data = await this.prisma.employee.update({
       where: { company_id, employee_id, deleted_at: null },
       data: updateData,
+      include: {
+        company: true,
+      },
     });
+
+    if (sendToEmail === true) {
+      if (plainPassword !== undefined && !updateData.username) {
+        void this.mailerService.sendTemplatedEmail(
+          data.email,
+          'Pemberitahuan Penggantian Data Pengguna',
+          'send-updated-data-user',
+          {
+            employeeName: data.name,
+            companyName: data.company.name,
+            year: new Date().getFullYear(),
+            loginUrl: 'https://gajadicairbrooo.netlify.app',
+            supportEmail: 'gajadicair@gmail.com',
+          },
+        );
+      } else {
+        void this.mailerService.sendTemplatedEmail(
+          data.email,
+          'Pemberitahuan Penggantian Kredensial',
+          'send-new-credentials',
+          {
+            employeeName: data.name,
+            companyName: data.company.name,
+            companyCode: data.company.company_identifier,
+            employeeUsername: data.username,
+            password: plainPassword,
+            year: new Date().getFullYear(),
+            loginUrl: 'https://gajadicairbrooo.netlify.app',
+            supportEmail: 'gajadicair@gmail.com',
+          },
+        );
+      }
+    }
+
+    return data;
   }
 
   async deleteEmployeeByIdByCompany(company_id: string, employee_id: string) {
@@ -90,6 +155,12 @@ export class EmployeeService {
   async getEmployeeById(employee_id: string) {
     return await this.prisma.employee.findFirst({
       where: { employee_id, deleted_at: null },
+    });
+  }
+
+  async getEmployeeByUsernameByCompany(username: string, company_id: string) {
+    return await this.prisma.employee.findFirst({
+      where: { username, company_id, deleted_at: null },
     });
   }
 }

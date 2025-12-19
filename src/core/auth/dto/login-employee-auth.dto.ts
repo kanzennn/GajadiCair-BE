@@ -2,10 +2,10 @@ import { IsString } from 'class-validator';
 
 export class LoginEmployeeAuthDto {
   @IsString()
-  company_id: string;
+  company_identifier: string;
 
   @IsString()
-  employee_id: string;
+  username: string;
 
   @IsString()
   password: string;

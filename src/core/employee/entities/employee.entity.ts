@@ -2,6 +2,7 @@ export class Employee {
   employee_id: string;
   name: string;
   company_id: string;
+  username: string;
   password: string;
   is_active: boolean;
   base_salary: number;

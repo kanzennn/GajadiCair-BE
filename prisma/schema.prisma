@@ -19,7 +19,8 @@ datasource db {
 
 model Company {
   company_id          String   @id @default(uuid())
-  email       String 
+  email       String
+  company_identifier String
   name        String?
   password    String?
   avatar_uri String?
@@ -146,6 +147,7 @@ model Bank { // ADMIN USE ONLY
 model Employee {
   employee_id         String       @id @default(uuid())
   name                String
+  username            String
   email               String
   company_id          String
   password            String

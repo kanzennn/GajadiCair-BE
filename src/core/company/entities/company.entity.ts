@@ -3,6 +3,7 @@ import { Employee } from '../../employee/entities/employee.entity';
 export class Company {
   company_id: string;
   email: string;
+  company_identifier: string;
   name?: string;
   password?: string;
   avatar_uri?: string;

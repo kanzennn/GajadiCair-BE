@@ -85,11 +85,23 @@ export class AuthService {
       });
 
       if (!company) {
+        let company_identifier: string = this.generateRandomCode();
+
+        // Ensure company_identifier is unique
+        while (
+          await this.prisma.company.findFirst({
+            where: { company_identifier },
+          })
+        ) {
+          company_identifier = this.generateRandomCode();
+        }
+
         company = await this.prisma.company.create({
           data: {
             email,
             name,
             avatar_uri: picture,
+            company_identifier,
           },
         });
       }
@@ -143,11 +155,24 @@ export class AuthService {
     if (existingcompany) throw new BadRequestException('Email already in use');
 
     const hashedPassword = await hash(registerAuthDto.password);
+
+    let company_identifier: string = this.generateRandomCode();
+
+    // Ensure company_identifier is unique
+    while (
+      await this.prisma.company.findFirst({
+        where: { company_identifier },
+      })
+    ) {
+      company_identifier = this.generateRandomCode();
+    }
+
     const company = await this.prisma.company.create({
       data: {
         email: registerAuthDto.email,
         name: registerAuthDto.name,
         password: hashedPassword,
+        company_identifier,
       },
     });
 
@@ -201,14 +226,18 @@ export class AuthService {
   }
 
   async loginEmployee(credentials: LoginEmployeeAuthDto) {
-    const employee = await this.prisma.employee.findUnique({
-      where: { employee_id: credentials.employee_id },
+    const employee = await this.prisma.employee.findFirst({
+      where: {
+        username: credentials.username,
+      },
+      include: { company: true },
     });
 
     if (
       !employee ||
       !employee?.password ||
-      employee.company_id !== credentials.company_id ||
+      !employee.company ||
+      employee.company.company_identifier !== credentials.company_identifier ||
       employee.is_active === false
     ) {
       throw new BadRequestException('Invalid credentials');
@@ -279,5 +308,23 @@ export class AuthService {
       type: 'access',
     });
     return { access_token };
+  }
+
+  private generateRandomCode(): string {
+    /// Payload: xxxx-xxx-xxx
+    const segments = [4, 3, 3];
+    const characters = '12345567890';
+    let code = '';
+
+    for (let i = 0; i < segments.length; i++) {
+      for (let j = 0; j < segments[i]; j++) {
+        const randomIndex = Math.floor(Math.random() * characters.length);
+        code += characters[randomIndex];
+      }
+      if (i < segments.length - 1) {
+        code += '-';
+      }
+    }
+    return code;
   }
 }
