@@ -240,15 +240,19 @@ export class FaceRecognitionService {
 
       form.append('employee_id', employeeId);
 
-      const res = await axios.delete(`${this.pythonUrl}/delete`, {
+      await axios.delete(`${this.pythonUrl}/delete`, {
         data: form,
         headers: {
           ...form.getHeaders(),
         },
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-      return res.data;
+      const newData = await this.prisma.employee.update({
+        where: { employee_id: employeeId },
+        data: { is_face_enrolled: false },
+      });
+
+      return newData;
     } catch (err) {
       if (err instanceof AxiosError) {
         console.log(
