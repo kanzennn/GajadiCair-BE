@@ -7,6 +7,7 @@ import {
   UseInterceptors,
   UseGuards,
   UploadedFiles,
+  Delete,
 } from '@nestjs/common';
 import { FaceRecognitionService } from './face-recognition.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
@@ -53,6 +54,14 @@ export class FaceRecognitionController {
       req.user.sub,
     );
 
+    return successResponse(data);
+  }
+
+  @Delete('remove-face')
+  @UseGuards(EmployeeAuthGuard)
+  async removeFace(@Req() req: Request & { user: TokenPayloadDto }) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const data = await this.faceRecognitionService.deleteFaceData(req.user.sub);
     return successResponse(data);
   }
 }

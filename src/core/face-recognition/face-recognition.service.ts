@@ -218,4 +218,75 @@ export class FaceRecognitionService {
       throw new BadRequestException('Failed to verify face');
     }
   }
+
+  async deleteFaceData(employeeId: string) {
+    try {
+      const isUserEnrolled = await this.prisma.employee.findUnique({
+        where: { employee_id: employeeId },
+        select: { is_face_enrolled: true },
+      });
+
+      if (!isUserEnrolled) {
+        throw new BadRequestException('Employee not found');
+      }
+
+      if (!isUserEnrolled.is_face_enrolled) {
+        throw new BadRequestException(
+          'You have not enrolled your face data yet',
+        );
+      }
+
+      const form = new FormData();
+
+      form.append('employee_id', employeeId);
+
+      const res = await axios.delete(`${this.pythonUrl}/delete`, {
+        data: form,
+        headers: {
+          ...form.getHeaders(),
+        },
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+      return res.data;
+    } catch (err) {
+      if (err instanceof AxiosError) {
+        console.log(
+          'Python delete-face-data error:',
+          err.response?.data || err.message,
+        );
+
+        if (err.response?.status === 400) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          if (err.response?.data?.detail?.error === 'dataset_not_found') {
+            throw new BadRequestException('No face data found for this user');
+          } else if (
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            err.response?.data?.detail?.error === 'invalid_employee_id'
+          ) {
+            throw new BadRequestException(
+              'The provided employee ID is invalid',
+            );
+          } else {
+            throw new BadRequestException(
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
+              err.response?.data?.detail?.message ||
+                'Bad request during face data deletion',
+            );
+          }
+        }
+
+        throw new InternalServerErrorException(
+          'Internal server error during face data deletion',
+        );
+      }
+
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+
+      console.log('Unknown error delete-face-data:', err);
+      throw new BadRequestException('Failed to delete face data');
+    }
+  }
 }

@@ -20,6 +20,7 @@ import mailerConfig from './config/mailer.config';
 import midtransConfig from './config/midtrans.config';
 import { MidtransModule } from './common/services/midtrans/midtrans.module';
 import { AttendanceModule } from './core/attendance/attendance.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { AttendanceModule } from './core/attendance/attendance.module';
     SubscriptionModule,
     MidtransModule,
     AttendanceModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService],
