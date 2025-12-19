@@ -3,9 +3,15 @@ import { AttendanceService } from './attendance.service';
 import { AttendanceController } from './attendance.controller';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { FaceRecognitionService } from '../face-recognition/face-recognition.service';
+import { AttendanceJobService } from 'src/jobs/attendance.job';
 
 @Module({
   controllers: [AttendanceController],
-  providers: [AttendanceService, PrismaService, FaceRecognitionService],
+  providers: [
+    AttendanceService,
+    PrismaService,
+    FaceRecognitionService,
+    AttendanceJobService,
+  ],
 })
 export class AttendanceModule {}

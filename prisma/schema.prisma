@@ -28,12 +28,14 @@ model Company {
   level_plan  Int   @default(0) // 0: free, 1: basic, 2: pro
   plan_expiration DateTime?
 
-  minimum_hours_per_day        Int?         // minimal jam kerja per hari (contoh: 8)
-  attendance_open_time         DateTime?    // jam absensi dibuka (contoh: 08:30)
-  attendance_close_time        DateTime?    // jam absensi ditutup (opsional)
-  work_start_time              DateTime?    // jam masuk kantor (contoh: 09:00)
-  work_end_time                DateTime?    // jam pulang kantor (contoh: 17:00)
-  attendance_tolerance_minutes Int?         // toleransi keterlambatan (contoh: 10 menit)
+  minimum_hours_per_day          Int?        // mis. 8
+
+  attendance_open_time           DateTime?   @db.Time(0) // 08:30
+  attendance_close_time          DateTime?   @db.Time(0) // 17:30 (opsional)
+
+  work_start_time                DateTime?   @db.Time(0) // 09:00
+
+  attendance_tolerance_minutes   Int?        @default(0)
 
   payroll_day_of_month         Int?         // tanggal gajian setiap bulan (contoh: 25)
 
@@ -174,15 +176,29 @@ model Employee {
   @@map("employees")
 }
 
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LEAVE
+  SICK
+}
+
 model EmployeeAttendance {
   employee_attendance_id   String     @id @default(uuid())
   employee_id              String
-  attendance_date           DateTime @db.Date
-  check_in_time           DateTime
+  attendance_date           DateTime? @db.Date
+  check_in_time           DateTime?
   check_in_location      Unsupported("geography")?
   check_out_time          DateTime?
   check_out_location     Unsupported("geography")?
   total_work_hours        Float?
+
+  status                   AttendanceStatus      @default(PRESENT) // 0: PRESENT, 1: ABSENT, 2: LEAVE, 3: SICK
+  absent_reason            String?
+
+  late_minutes           Int?
+  is_late                Boolean  @default(false)
+
   created_at              DateTime   @default(now())
   updated_at              DateTime   @updatedAt
   deleted_at              DateTime?
@@ -192,6 +208,7 @@ model EmployeeAttendance {
   @@unique([employee_id, attendance_date])
   @@map("employee_attendances")
 }
+
 
 model PayrollLog {
   payroll_log_id   String     @id @default(uuid())

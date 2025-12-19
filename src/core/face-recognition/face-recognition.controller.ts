@@ -1,7 +1,6 @@
 import {
   Controller,
   Post,
-  Body,
   UploadedFile,
   Req,
   UseInterceptors,
@@ -60,7 +59,6 @@ export class FaceRecognitionController {
   @Delete('remove-face')
   @UseGuards(EmployeeAuthGuard)
   async removeFace(@Req() req: Request & { user: TokenPayloadDto }) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const data = await this.faceRecognitionService.deleteFaceData(req.user.sub);
     return successResponse(data);
   }

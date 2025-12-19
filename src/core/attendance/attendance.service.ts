@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { FaceRecognitionService } from '../face-recognition/face-recognition.service';
@@ -34,6 +33,10 @@ export class AttendanceService {
               company_id: true,
               attendance_location_enabled: true,
               attendance_radius_meters: true,
+              work_start_time: true,
+              attendance_open_time: true,
+              attendance_tolerance_minutes: true,
+              attendance_close_time: true,
             },
           },
         },
@@ -42,8 +45,35 @@ export class AttendanceService {
       if (!employee?.company)
         throw new BadRequestException('Employee not found');
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const company = employee.company;
+
+      if (company.attendance_open_time) {
+        const attendanceOpenTime = new Date(nowTime);
+        attendanceOpenTime.setHours(
+          company.attendance_open_time.getHours(),
+          company.attendance_open_time.getMinutes(),
+          0,
+          0,
+        );
+        if (nowTime < attendanceOpenTime) {
+          throw new BadRequestException(
+            'Attendance is not open yet at this time',
+          );
+        }
+      }
+
+      if (company.attendance_close_time) {
+        const attendanceCloseTime = new Date(nowTime);
+        attendanceCloseTime.setHours(
+          company.attendance_close_time.getHours(),
+          company.attendance_close_time.getMinutes(),
+          0,
+          0,
+        );
+        if (nowTime > attendanceCloseTime) {
+          throw new BadRequestException('Attendance is already closed');
+        }
+      }
 
       if (company.attendance_location_enabled) {
         if (!company.attendance_radius_meters) {
@@ -96,12 +126,19 @@ export class AttendanceService {
 
       if (existing) throw new BadRequestException('Already checked in today');
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+      const { lateMinutes, isLate } = this.calculateLateMinutes(
+        nowTime,
+        company.work_start_time,
+        company.attendance_tolerance_minutes ?? 0,
+      );
+
       const created = await tx.employeeAttendance.create({
         data: {
           employee_id: employeeId,
           attendance_date: today,
           check_in_time: nowTime,
+          late_minutes: lateMinutes,
+          is_late: isLate,
         },
         select: { employee_attendance_id: true },
       });
@@ -121,7 +158,6 @@ export class AttendanceService {
     `;
 
       return tx.employeeAttendance.findUnique({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         where: { employee_attendance_id: created.employee_attendance_id },
       });
     });
@@ -146,6 +182,8 @@ export class AttendanceService {
               company_id: true,
               attendance_location_enabled: true,
               attendance_radius_meters: true,
+              minimum_hours_per_day: true,
+              work_start_time: true,
             },
           },
         },
@@ -154,7 +192,6 @@ export class AttendanceService {
       if (!employee?.company)
         throw new BadRequestException('Employee not found');
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const company = employee.company;
 
       if (company.attendance_location_enabled) {
@@ -197,6 +234,9 @@ export class AttendanceService {
         }
       }
 
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
       const existing = await tx.employeeAttendance.findFirst({
         where: {
           employee_id: employeeId,
@@ -208,8 +248,20 @@ export class AttendanceService {
       if (!existing)
         throw new BadRequestException('You have not checked in today');
 
-      const total_work_hours =
-        (nowTime.getTime() - existing.check_in_time.getTime()) / 3600000;
+      const total_work_hours = this.calcEffectiveWorkedHours({
+        now: nowTime,
+        checkIn: existing.check_in_time,
+        isLate: existing.is_late,
+        companyWorkStart: company.work_start_time,
+      });
+
+      const minHours = company.minimum_hours_per_day ?? 0;
+
+      if (minHours > 0 && total_work_hours < minHours) {
+        throw new BadRequestException(
+          `You must work at least ${minHours} hours. You have worked ${total_work_hours.toFixed(2)} hours.`,
+        );
+      }
 
       const updated = await tx.employeeAttendance.update({
         where: { employee_attendance_id: existing.employee_attendance_id },
@@ -235,7 +287,6 @@ export class AttendanceService {
     `;
 
       return tx.employeeAttendance.findUnique({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         where: { employee_attendance_id: updated.employee_attendance_id },
       });
     });
@@ -265,5 +316,70 @@ export class AttendanceService {
     });
 
     return attendance;
+  }
+
+  private calculateLateMinutes(
+    checkIn: Date,
+    workStart: Date | null,
+    toleranceMinutes = 0,
+  ): { lateMinutes: number; isLate: boolean } {
+    if (!workStart) {
+      return { lateMinutes: 0, isLate: false };
+    }
+
+    // Tempel jam kerja ke tanggal check-in (WIB-safe)
+    const workStartToday = new Date(checkIn);
+    workStartToday.setHours(workStart.getHours(), workStart.getMinutes(), 0, 0);
+
+    const diffMs = checkIn.getTime() - workStartToday.getTime();
+    const diffMinutes = Math.floor(diffMs / 60000);
+
+    const lateMinutes = Math.max(0, diffMinutes - toleranceMinutes);
+
+    return {
+      lateMinutes,
+      isLate: lateMinutes > 0,
+    };
+  }
+
+  private getWorkStartToday(
+    now: Date,
+    companyWorkStart: Date | null,
+  ): Date | null {
+    if (!companyWorkStart) return null;
+
+    const workStartToday = new Date(now);
+    workStartToday.setHours(
+      companyWorkStart.getHours(),
+      companyWorkStart.getMinutes(),
+      0,
+      0,
+    );
+    return workStartToday;
+  }
+
+  private calcEffectiveWorkedHours(params: {
+    now: Date;
+    checkIn: Date | null;
+    isLate: boolean;
+    companyWorkStart: Date | null;
+  }): number {
+    const { now, checkIn, isLate, companyWorkStart } = params;
+
+    // kalau telat → start dari check-in
+    if (isLate) {
+      if (!checkIn) return 0;
+      return (now.getTime() - checkIn.getTime()) / 3600000;
+    }
+
+    // kalau tidak telat → start dari work_start_time company (hari ini)
+    const workStartToday = this.getWorkStartToday(now, companyWorkStart);
+    if (!workStartToday) {
+      // fallback kalau company belum set work_start_time
+      if (!checkIn) return 0;
+      return (now.getTime() - checkIn.getTime()) / 3600000;
+    }
+
+    return (now.getTime() - workStartToday.getTime()) / 3600000;
   }
 }
