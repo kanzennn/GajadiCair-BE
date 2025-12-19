@@ -149,10 +149,12 @@ export class FaceRecognitionService {
       where: { employee_id: employeeId },
       select: { is_face_enrolled: true },
     });
-    if (userAlreadyEnrolled?.is_face_enrolled) {
-      throw new BadRequestException(
-        'You have already enrolled your face data before',
-      );
+    if (!userAlreadyEnrolled) {
+      throw new BadRequestException('Employee not found');
+    }
+
+    if (!userAlreadyEnrolled.is_face_enrolled) {
+      throw new BadRequestException('You have not enrolled your face data yet');
     }
 
     const form = new FormData();
@@ -174,7 +176,6 @@ export class FaceRecognitionService {
         throw new BadRequestException('Face does not match');
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return res.data;
     } catch (err) {
       if (err instanceof AxiosError) {

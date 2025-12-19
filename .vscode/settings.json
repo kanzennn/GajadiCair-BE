@@ -11,5 +11,9 @@
             "username": "root",
             "password": ""
         }
-    ]
+    ],
+    "eslint.validate": ["typescript"],
+    "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": "explicit"
+    }
 }
