@@ -26,6 +26,7 @@ import redisConfig from './config/redis.config';
 import { CacheModule } from '@nestjs/cache-manager';
 import Keyv from 'keyv';
 import KeyvRedis from '@keyv/redis';
+import { S3Module } from './common/services/s3/s3.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import KeyvRedis from '@keyv/redis';
         };
       },
     }),
+    S3Module,
   ],
   controllers: [AppController],
   providers: [AppService],

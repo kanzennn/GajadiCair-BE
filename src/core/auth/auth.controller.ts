@@ -7,6 +7,9 @@ import {
   Get,
   Req,
   UseGuards,
+  Put,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginAuthDto } from './dto/login-auth.dto';
@@ -21,6 +24,12 @@ import { LoginEmployeeAuthDto } from './dto/login-employee-auth.dto';
 import { EmployeeAuthGuard } from './guards/employee.guard';
 import { EmployeeService } from '../employee/employee.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { S3Service } from 'src/common/services/s3/s3.service';
+import { convertFilename } from 'src/utils/convertString.utils';
+import { UpdateProfileEmployeeDto } from './dto/update-profile-employee.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthControllerV1 {
@@ -28,6 +37,7 @@ export class AuthControllerV1 {
     private readonly authService: AuthService,
     private readonly companyService: CompanyService,
     private readonly employeeService: EmployeeService,
+    private readonly s3: S3Service,
   ) {}
 
   @Post('company/login')
@@ -106,6 +116,59 @@ export class AuthControllerV1 {
     );
   }
 
+  @Put('company/profile')
+  @HttpCode(200)
+  @UseGuards(CompanyAuthGuard)
+  @UseInterceptors(FileInterceptor('profile_picture'))
+  async updateProfile(
+    @Req() req: Request & { user: TokenPayloadDto },
+    @Body() dto: UpdateProfileDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (file) {
+      const key = `company/profile-picture/${Date.now()}-${convertFilename(file.originalname)}`;
+
+      const picture = await this.s3.uploadBuffer({
+        key,
+        buffer: file.buffer,
+        contentType: file.mimetype,
+        cacheControl: 'public, max-age=31536000',
+      });
+
+      dto.avatar_uri = picture.key;
+    }
+
+    console.log(dto);
+
+    const updatedCompany = await this.companyService.updateCompanyProfile(
+      req.user.sub,
+      dto,
+    );
+    return successResponse(
+      {
+        ...updatedCompany,
+        password: undefined,
+      },
+      'Profile updated successfully',
+    );
+  }
+
+  @Put('company/change-password')
+  @HttpCode(200)
+  @UseGuards(CompanyAuthGuard)
+  async changeCompanyPassword(
+    @Req() req: Request & { user: TokenPayloadDto },
+    @Body() dto: ChangePasswordDto,
+  ) {
+    await this.authService.changeCompanyPassword(
+      req.user.sub,
+      dto.old_password,
+      dto.new_password,
+    );
+
+    return successResponse(null, 'Password changed successfully');
+  }
+
   @Get('company/refresh-token')
   @HttpCode(200)
   async refreshCompanyToken(@Req() req: Request) {
@@ -153,6 +216,58 @@ export class AuthControllerV1 {
       },
       'Profile fetched successfully',
     );
+  }
+
+  @Put('employee/profile')
+  @HttpCode(200)
+  @UseGuards(EmployeeAuthGuard)
+  @UseInterceptors(FileInterceptor('profile_picture'))
+  async updateEmployeeProfile(
+    @Req() req: Request & { user: TokenPayloadDto },
+    @Body() dto: UpdateProfileEmployeeDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (file) {
+      const key = `employee/profile-picture/${Date.now()}-${convertFilename(file.originalname)}`;
+
+      const picture = await this.s3.uploadBuffer({
+        key,
+        buffer: file.buffer,
+        contentType: file.mimetype,
+        cacheControl: 'public, max-age=31536000',
+      });
+
+      dto.avatar_uri = picture.key;
+    }
+
+    const updatedEmployee = await this.employeeService.updateEmployeeProfile(
+      req.user.sub,
+      dto,
+    );
+
+    return successResponse(
+      {
+        ...updatedEmployee,
+        password: undefined,
+      },
+      'Profile updated successfully',
+    );
+  }
+
+  @Put('employee/change-password')
+  @HttpCode(200)
+  @UseGuards(CompanyAuthGuard)
+  async changeEmployeePassword(
+    @Req() req: Request & { user: TokenPayloadDto },
+    @Body() dto: ChangePasswordDto,
+  ) {
+    await this.authService.changeEmployeePassword(
+      req.user.sub,
+      dto.old_password,
+      dto.new_password,
+    );
+
+    return successResponse(null, 'Password changed successfully');
   }
 
   @Get('employee/refresh-token')

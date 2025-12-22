@@ -5,6 +5,7 @@ import { UpdateEmployeeDto } from '../company/dto/update-employee.dto';
 import { hash } from 'argon2';
 import { CustomMailerService } from 'src/common/services/mailer/mailer.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+import { UpdateProfileEmployeeDto } from '../auth/dto/update-profile-employee.dto';
 
 @Injectable()
 export class EmployeeService {
@@ -12,6 +13,23 @@ export class EmployeeService {
     private readonly prisma: PrismaService,
     private readonly mailerService: CustomMailerService,
   ) {}
+
+  async updateEmployeeProfile(
+    employee_id: string,
+    updateData: UpdateProfileEmployeeDto,
+  ) {
+    const checkIsEmployeeExist = await this.getEmployeeById(employee_id);
+    if (!checkIsEmployeeExist) {
+      throw new BadRequestException('Employee not found');
+    }
+
+    const updatedData = await this.prisma.employee.update({
+      where: { employee_id },
+      data: updateData,
+    });
+
+    return updatedData;
+  }
 
   async createEmployeeByCompany(
     company_id: string,

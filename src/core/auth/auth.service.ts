@@ -8,6 +8,8 @@ import { GoogleOauthService } from 'src/common/services/google/google-oauth.serv
 import { JwtService } from '@nestjs/jwt';
 import { LoginEmployeeAuthDto } from './dto/login-employee-auth.dto';
 import { TokenPayloadDto } from './dto/token-payload.dto';
+import { CompanyService } from '../company/company.service';
+import { EmployeeService } from '../employee/employee.service';
 
 @Injectable()
 export class AuthService {
@@ -15,6 +17,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly googleOauthService: GoogleOauthService,
     private jwtService: JwtService,
+    private readonly companyService: CompanyService,
+    private readonly employeeService: EmployeeService,
   ) {}
 
   async loginCompany(credentials: LoginAuthDto) {
@@ -63,6 +67,41 @@ export class AuthService {
       access_token,
       refresh_token,
     };
+  }
+
+  async changeCompanyPassword(
+    company_id: string,
+    old_password: string,
+    new_password: string,
+  ) {
+    const checkIsCompanyExist =
+      await this.companyService.getCompanyById(company_id);
+
+    if (!checkIsCompanyExist) {
+      throw new BadRequestException('Company not found');
+    }
+
+    if (!checkIsCompanyExist.password) {
+      throw new BadRequestException(
+        'You cant change password for social login',
+      );
+    }
+
+    const isOldPasswordValid = await verify(
+      checkIsCompanyExist.password,
+      old_password,
+    );
+
+    if (!isOldPasswordValid) {
+      throw new BadRequestException('Old password is incorrect');
+    }
+
+    const hashedNewPassword = await hash(new_password);
+
+    return await this.prisma.company.update({
+      where: { company_id },
+      data: { password: hashedNewPassword },
+    });
   }
 
   async googleLoginCompany(idToken: string) {
@@ -283,6 +322,35 @@ export class AuthService {
       access_token,
       refresh_token,
     };
+  }
+
+  async changeEmployeePassword(
+    employee_id: string,
+    old_password: string,
+    new_password: string,
+  ) {
+    const checkIsEmployeeExists =
+      await this.employeeService.getEmployeeById(employee_id);
+
+    if (!checkIsEmployeeExists) {
+      throw new BadRequestException('Employee not found');
+    }
+
+    const isOldPasswordValid = await verify(
+      checkIsEmployeeExists.password,
+      old_password,
+    );
+
+    if (!isOldPasswordValid) {
+      throw new BadRequestException('Old password is incorrect');
+    }
+
+    const hashedNewPassword = await hash(new_password);
+
+    return await this.prisma.employee.update({
+      where: { employee_id },
+      data: { password: hashedNewPassword },
+    });
   }
 
   async refreshEmployeeToken(refresh_token: string) {
