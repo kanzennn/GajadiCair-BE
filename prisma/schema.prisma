@@ -108,18 +108,35 @@ model CompanySocialite {
   @@unique([socialite_name, socialite_id])
 }
 
+enum SubscriptionChangeType {
+  NEW
+  RENEW
+  EXTEND
+  UPGRADE
+  DOWNGRADE
+  UPGRADE_RENEW
+}
+
 model CompanySubscriptionTransactionHistory {
   company_subscription_id   String   @id @default(uuid())
   company_id                String
   midtrans_transaction_id   String?
 
   gross_amount              Float
-  level_plan                Int
+
+  // plan info
+  change_type               SubscriptionChangeType @default(NEW)
+  from_level_plan           Int?
+  level_plan                Int // ini jadi "to_level_plan"
   plan_duration_months      Int
+
+  // ✅ periode subscription yang dibayar transaksi ini
+  period_start              DateTime?
+  period_end                DateTime?
 
   midtrans_admin_fee        Float?
   midtrans_status           String?
-  midtrans_payment_method     String?
+  midtrans_payment_method   String?
   midtrans_transaction_token String
   midtrans_redirect_url     String
   midtrans_paid_at          DateTime?
@@ -128,10 +145,11 @@ model CompanySubscriptionTransactionHistory {
   updated_at                DateTime @updatedAt
   deleted_at                DateTime?
 
-  company                    Company @relation(fields: [company_id], references: [company_id])
+  company                   Company @relation(fields: [company_id], references: [company_id])
 
   @@map("company_subscription_transaction_histories")
 }
+
 
 model Bank { // ADMIN USE ONLY
   bank_id     String   @id @default(uuid())

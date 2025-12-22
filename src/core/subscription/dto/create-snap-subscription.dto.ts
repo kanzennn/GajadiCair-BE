@@ -1,6 +1,14 @@
-import { IsIn } from 'class-validator';
+import { IsInt, Min, Max, IsOptional } from 'class-validator';
 
 export class CreateSnapSubscriptionDto {
-  @IsIn([1, 2], { message: 'level_plan must be one of: 1, 2' })
+  @IsInt()
+  @Min(0)
+  @Max(2)
   level_plan: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  duration_months?: number; // untuk extend / renew
 }

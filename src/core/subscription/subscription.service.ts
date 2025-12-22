@@ -1,16 +1,18 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { CreateSnapSubscriptionDto } from './dto/create-snap-subscription.dto';
 import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { CompanyService } from '../company/company.service';
 import { MidtransService } from 'src/common/services/midtrans/midtrans.service';
-import { InternalServerErrorException } from 'src/common/exceptions/internalServerError.exception';
 import { SnapDto } from 'src/common/services/midtrans/dto/snap.dto';
 import crypto from 'crypto';
 
 import { ConfigService } from '@nestjs/config';
+import { addMonthsSafe } from 'src/utils/date.utils';
+import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+import { daysLeftCeil } from '../../utils/date.utils';
 
 @Injectable()
 export class SubscriptionService {
@@ -21,82 +23,190 @@ export class SubscriptionService {
     private readonly configService: ConfigService,
   ) {}
 
-  async createSnap(
-    createSnapSubscriptionDto: CreateSnapSubscriptionDto,
-    user: TokenPayloadDto,
-  ) {
-    const companyProfile = await this.companyService.getCompanyById(user.sub);
-
-    let gross_amount = 100000;
-    let plan = 1;
-
-    switch (createSnapSubscriptionDto.level_plan) {
-      case 1:
-        plan = 1;
-        gross_amount = 100000;
-        break;
-      case 2:
-        plan = 2;
-        gross_amount = 250000;
-        break;
-      default:
-        plan = 1;
-        gross_amount = 100000;
-    }
-
-    const order_id = `sub${plan}-${Date.now()}`;
-
-    const params = {
-      transaction_details: {
-        order_id: order_id,
-        gross_amount,
+  async createSnap(dto: CreateSnapSubscriptionDto, user: TokenPayloadDto) {
+    const company = await this.prisma.company.findUnique({
+      where: { company_id: user.sub },
+      select: {
+        company_id: true,
+        name: true,
+        email: true,
+        level_plan: true,
+        plan_expiration: true,
       },
-      customer_details: {
-        first_name: `${companyProfile?.name}`,
-        email: companyProfile?.email,
-      },
-    };
+    });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const result: SnapDto = await this.midtransService
-      .createTransaction(params)
-      .catch((error) => {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        console.error('Midtrans Error:', error.ApiResponse);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        if (error.ApiResponse) {
-          throw new InternalServerErrorException(
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-            `Midtrans API Error: ${error.ApiResponse.error_messages[0]}`,
-          );
-        }
+    if (!company) throw new BadRequestException('Company not found');
 
-        throw new InternalServerErrorException(
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          `Midtrans Unexpected Error: ${error.message}`,
+    const now = new Date();
+    const targetPlan = dto.level_plan;
+    const durationMonths = dto.duration_months ?? 1;
+
+    const currentPlan = company.level_plan ?? 0;
+    const expiresAt = company.plan_expiration;
+
+    // ---------------- Downgrade ----------------
+    if (targetPlan < currentPlan) {
+      if (!expiresAt)
+        throw new BadRequestException('No active subscription to downgrade');
+
+      const daysLeft = daysLeftCeil(expiresAt, now);
+      if (daysLeft > 5) {
+        throw new BadRequestException(
+          `Downgrade hanya boleh jika sisa masa aktif <= 5 hari. Sisa: ${daysLeft} hari`,
         );
+      }
+
+      await this.prisma.company.update({
+        where: { company_id: company.company_id },
+        data: { level_plan: targetPlan },
       });
 
-    const subscription =
       await this.prisma.companySubscriptionTransactionHistory.create({
         data: {
-          company_subscription_id: order_id,
-          company_id: user.sub,
-          gross_amount: gross_amount,
-          midtrans_redirect_url: result.redirect_url,
-          midtrans_transaction_token: result.token,
-          level_plan: plan,
-          plan_duration_months: 1,
+          company_subscription_id: `downgrade${currentPlan}to${targetPlan}-${Date.now()}`,
+          company_id: company.company_id,
+          gross_amount: 0,
+          change_type: 'DOWNGRADE',
+          from_level_plan: currentPlan,
+          level_plan: targetPlan,
+          plan_duration_months: 0,
+          period_start: now,
+          period_end: expiresAt,
+          midtrans_status: 'downgraded_no_charge',
+          midtrans_paid_at: now,
+          midtrans_transaction_token: '-',
+          midtrans_redirect_url: '-',
         },
       });
 
-    if (!subscription) {
-      throw new InternalServerErrorException(
-        'Failed to create subscription transaction record',
-      );
+      return { downgrade: true, message: 'Downgrade applied (no charge)' };
     }
 
+    // ---------------- Same plan = Extend ----------------
+    if (targetPlan === currentPlan) {
+      const gross_amount = this.planPrice(targetPlan) * durationMonths;
+      const order_id = `extend${targetPlan}-${Date.now()}`;
+
+      const result: SnapDto = await this.midtransService.createTransaction({
+        transaction_details: { order_id, gross_amount },
+        customer_details: {
+          first_name: `${company.name ?? ''}`,
+          email: company.email,
+        },
+      });
+
+      await this.prisma.companySubscriptionTransactionHistory.create({
+        data: {
+          company_subscription_id: order_id,
+          company_id: company.company_id,
+          gross_amount,
+          change_type: currentPlan === 0 ? 'NEW' : 'EXTEND',
+          from_level_plan: currentPlan,
+          level_plan: targetPlan,
+          plan_duration_months: durationMonths,
+          midtrans_transaction_token: result.token,
+          midtrans_redirect_url: result.redirect_url,
+        },
+      });
+
+      return result;
+    }
+
+    // ---------------- Upgrade ----------------
+    // targetPlan > currentPlan
+    let gross_amount: number;
+    let change_type: 'UPGRADE' | 'UPGRADE_RENEW' | 'NEW';
+
+    const isActive =
+      !!expiresAt && expiresAt.getTime() > now.getTime() && currentPlan > 0;
+
+    if (isActive) {
+      const daysLeft = daysLeftCeil(expiresAt, now);
+
+      // ✅ RULE BARU: kalau <= 5 hari, bayar 1 bulan plan target & extend 1 bulan
+      if (daysLeft <= 5) {
+        gross_amount = this.planPrice(targetPlan) * 1; // 1 bulan penuh plan target
+        change_type = 'UPGRADE_RENEW';
+      } else {
+        // ✅ "paling adil": pro-rata selisih untuk seluruh sisa masa aktif
+        gross_amount = this.proratedUpgradeRemainingTerm({
+          currentLevel: currentPlan,
+          targetLevel: targetPlan,
+          now,
+          expiresAt: expiresAt,
+        });
+        change_type = 'UPGRADE';
+      }
+    } else {
+      // kalau tidak aktif / expired: treat sebagai beli plan baru (boleh durationMonths)
+      gross_amount = this.planPrice(targetPlan) * durationMonths;
+      change_type = 'NEW';
+    }
+
+    const order_id = `upgrade${currentPlan}to${targetPlan}-${Date.now()}`;
+
+    const result: SnapDto = await this.midtransService.createTransaction({
+      transaction_details: { order_id, gross_amount },
+      customer_details: {
+        first_name: `${company.name ?? ''}`,
+        email: company.email,
+      },
+    });
+
+    await this.prisma.companySubscriptionTransactionHistory.create({
+      data: {
+        company_subscription_id: order_id,
+        company_id: company.company_id,
+        gross_amount,
+        change_type: change_type as any, // kalau enum kamu belum punya UPGRADE_RENEW, lihat catatan di bawah
+        from_level_plan: currentPlan,
+        level_plan: targetPlan,
+        plan_duration_months:
+          change_type === 'UPGRADE_RENEW' ? 1 : durationMonths,
+        midtrans_transaction_token: result.token,
+        midtrans_redirect_url: result.redirect_url,
+      },
+    });
+
     return result;
+  }
+
+  planPrice(level: number) {
+    switch (level) {
+      case 1:
+        return 299_000;
+      case 2:
+        return 799_000;
+      default:
+        return 0;
+    }
+  }
+
+  proratedUpgradeRemainingTerm(params: {
+    currentLevel: number;
+    targetLevel: number;
+    now: Date;
+    expiresAt: Date;
+  }) {
+    const diffMonthly =
+      this.planPrice(params.targetLevel) - this.planPrice(params.currentLevel);
+    if (diffMonthly <= 0) return 0;
+
+    if (params.expiresAt.getTime() <= params.now.getTime()) {
+      // tidak ada masa aktif, bayar full target 1 bulan
+      return this.planPrice(params.targetLevel);
+    }
+
+    const remainingDays = Math.ceil(
+      (params.expiresAt.getTime() - params.now.getTime()) / 86400000,
+    );
+    const monthsEquivalent = remainingDays / 30;
+
+    // Midtrans gross_amount harus integer
+    const amount = Math.round(diffMonthly * monthsEquivalent);
+
+    // optional minimal charge
+    return Math.max(1_000, amount);
   }
 
   async getSubscriptionTransactionHistoriesByCompany(company_id: string) {
@@ -120,81 +230,128 @@ export class SubscriptionService {
       throw new BadRequestException('Invalid signature key');
     }
 
-    console.log(payload);
+    const orderId = payload.order_id;
 
-    const company_subscription_transaction_history =
-      await this.prisma.companySubscriptionTransactionHistory.findUnique({
-        where: {
-          company_subscription_id: payload.order_id,
+    return this.prisma.$transaction(async (tx) => {
+      const sub = await tx.companySubscriptionTransactionHistory.findUnique({
+        where: { company_subscription_id: orderId },
+        include: {
+          company: { select: { company_id: true, plan_expiration: true } },
         },
       });
 
-    if (!company_subscription_transaction_history) {
-      throw new BadRequestException('Subscription transaction not found');
-    }
+      if (!sub)
+        throw new BadRequestException('Subscription transaction not found');
 
-    if (payload.transaction_status === 'pending') {
-      await this.prisma.companySubscriptionTransactionHistory.update({
-        where: {
-          company_subscription_id: payload.order_id,
-        },
+      const isPending = payload.transaction_status === 'pending';
+      const isPaid =
+        (payload.transaction_status === 'capture' &&
+          payload.fraud_status === 'accept') ||
+        payload.transaction_status === 'settlement';
+      const isFailed = ['deny', 'expire', 'cancel'].includes(
+        payload.transaction_status,
+      );
+
+      await tx.companySubscriptionTransactionHistory.update({
+        where: { company_subscription_id: orderId },
         data: {
           midtrans_status: payload.transaction_status,
-          midtrans_payment_method: payload.payment_type,
-          midtrans_transaction_id: payload.transaction_id,
-        },
-      });
-    } else if (
-      (payload.transaction_status === 'capture' &&
-        payload.fraud_status === 'accept') ||
-      payload.transaction_status === 'settlement'
-    ) {
-      await this.prisma.companySubscriptionTransactionHistory.update({
-        where: {
-          company_subscription_id: payload.order_id,
-        },
-        data: {
-          midtrans_status: payload.transaction_status,
-          midtrans_paid_at: new Date(),
+          midtrans_payment_method:
+            payload.payment_type ?? sub.midtrans_payment_method,
+          midtrans_transaction_id:
+            payload.transaction_id ?? sub.midtrans_transaction_id,
         },
       });
 
-      const new_expired_date = () => {
-        const now = new Date();
-        const dayToMs =
-          company_subscription_transaction_history.plan_duration_months *
-          30 *
-          24 *
-          60 *
-          60 *
-          1000;
-        return new Date(now.getTime() + dayToMs);
-      };
+      if (isPending || isFailed) return true;
+      if (!isPaid) return true;
 
-      await this.prisma.company.update({
-        where: {
-          company_id: company_subscription_transaction_history.company_id,
-        },
-        data: {
-          level_plan: company_subscription_transaction_history.level_plan,
-          plan_expiration: new_expired_date(),
-        },
-      });
-    } else if (
-      payload.transaction_status === 'deny' ||
-      payload.transaction_status === 'expire' ||
-      payload.transaction_status === 'cancel'
-    ) {
-      await this.prisma.companySubscriptionTransactionHistory.update({
-        where: {
-          company_subscription_id: payload.order_id,
-        },
-        data: {
-          midtrans_status: payload.transaction_status,
-        },
-      });
-    }
+      // ✅ idempotent
+      if (sub.midtrans_paid_at) return true;
 
-    return true;
+      const now = new Date();
+
+      await tx.companySubscriptionTransactionHistory.update({
+        where: { company_subscription_id: orderId },
+        data: { midtrans_paid_at: now },
+      });
+
+      const currentExpiry = sub.company.plan_expiration;
+      const baseStart =
+        currentExpiry && currentExpiry.getTime() > now.getTime()
+          ? currentExpiry
+          : now;
+
+      // -------- UPGRADE normal: expiry tetap --------
+      if (sub.change_type === 'UPGRADE') {
+        const finalExpiry =
+          currentExpiry && currentExpiry.getTime() > now.getTime()
+            ? currentExpiry
+            : addMonthsSafe(now, sub.plan_duration_months ?? 1);
+
+        await tx.company.update({
+          where: { company_id: sub.company.company_id },
+          data: {
+            level_plan: sub.level_plan,
+            plan_expiration: finalExpiry,
+          },
+        });
+
+        await tx.companySubscriptionTransactionHistory.update({
+          where: { company_subscription_id: orderId },
+          data: { period_start: now, period_end: finalExpiry },
+        });
+
+        return true;
+      }
+
+      // -------- UPGRADE_RENEW: expiry ditambah 1 bulan --------
+      if (sub.change_type === 'UPGRADE_RENEW') {
+        const finalExpiry = addMonthsSafe(baseStart, 1);
+
+        await tx.company.update({
+          where: { company_id: sub.company.company_id },
+          data: {
+            level_plan: sub.level_plan,
+            plan_expiration: finalExpiry,
+          },
+        });
+
+        await tx.companySubscriptionTransactionHistory.update({
+          where: { company_subscription_id: orderId },
+          data: { period_start: baseStart, period_end: finalExpiry },
+        });
+
+        return true;
+      }
+
+      // -------- NEW / EXTEND / RENEW --------
+      if (
+        sub.change_type === 'NEW' ||
+        sub.change_type === 'RENEW' ||
+        sub.change_type === 'EXTEND'
+      ) {
+        const months = sub.plan_duration_months ?? 1;
+        const finalExpiry = addMonthsSafe(baseStart, months);
+
+        await tx.company.update({
+          where: { company_id: sub.company.company_id },
+          data: {
+            level_plan: sub.level_plan,
+            plan_expiration: finalExpiry,
+          },
+        });
+
+        await tx.companySubscriptionTransactionHistory.update({
+          where: { company_subscription_id: orderId },
+          data: { period_start: baseStart, period_end: finalExpiry },
+        });
+
+        return true;
+      }
+
+      // DOWNGRADE biasanya no payment, ignore
+      return true;
+    });
   }
 }
