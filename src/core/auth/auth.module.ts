@@ -9,6 +9,7 @@ import { JwtCompanyStrategy } from './strategies/jwt-company.strategy';
 import { CompanyModule } from '../company/company.module';
 import { EmployeeModule } from '../employee/employee.module';
 import { JwtEmployeeStrategy } from './strategies/jwt-employee.strategy';
+import { S3Service } from 'src/common/services/s3/s3.service';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { JwtEmployeeStrategy } from './strategies/jwt-employee.strategy';
     GoogleOauthService,
     JwtCompanyStrategy,
     JwtEmployeeStrategy,
+    S3Service,
   ],
   exports: [JwtCompanyStrategy],
 })

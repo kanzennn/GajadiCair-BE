@@ -15,6 +15,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { CheckInDto } from './dto/check-in.dto';
 import { successResponse } from 'src/utils/response.utils';
+import { CompanyAuthGuard } from '../auth/guards/company.guard';
 
 @Controller({ version: '1' })
 export class AttendanceController {
@@ -97,4 +98,8 @@ export class AttendanceController {
       'Check-out eligibility retrieved successfully',
     );
   }
+
+  @Get('company/attendance/setting')
+  @UseGuards(CompanyAuthGuard)
+  async getAttendanceSetting() {}
 }
