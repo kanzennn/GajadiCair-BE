@@ -159,6 +159,13 @@ export class AttendanceService {
       WHERE employee_attendance_id = ${created.employee_attendance_id}
     `;
 
+      await tx.attendanceLog.create({
+        data: {
+          employee_id: employeeId,
+          log_type: 0,
+        },
+      });
+
       return tx.employeeAttendance.findUnique({
         where: { employee_attendance_id: created.employee_attendance_id },
       });
@@ -245,6 +252,9 @@ export class AttendanceService {
           check_out_time: null,
           deleted_at: null,
         },
+        orderBy: {
+          attendance_date: 'desc',
+        },
       });
 
       if (!existing)
@@ -264,6 +274,8 @@ export class AttendanceService {
           `You must work at least ${minHours} hours. You have worked ${total_work_hours.toFixed(2)} hours.`,
         );
       }
+
+      console.log(existing);
 
       const updated = await tx.employeeAttendance.update({
         where: {
@@ -290,6 +302,13 @@ export class AttendanceService {
         )::geography
       WHERE employee_attendance_id = ${updated.employee_attendance_id}
     `;
+
+      await tx.attendanceLog.create({
+        data: {
+          employee_id: employeeId,
+          log_type: 1,
+        },
+      });
 
       return tx.employeeAttendance.findUnique({
         where: { employee_attendance_id: updated.employee_attendance_id },

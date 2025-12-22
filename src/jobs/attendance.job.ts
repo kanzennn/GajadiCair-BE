@@ -25,6 +25,7 @@ export class AttendanceJobService {
       where: {
         deleted_at: null,
         is_active: true,
+        created_at: { lt: targetDate },
       },
       select: {
         employee_id: true,
@@ -59,7 +60,7 @@ export class AttendanceJobService {
       .map((id) => ({
         employee_id: id,
         attendance_date: targetDate,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+
         status: AttendanceStatus.ABSENT,
         absent_reason: 'AUTO_ABSENT_NO_RECORD',
       }));

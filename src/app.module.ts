@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import appConfig from './config/app.config';
 import s3Config from './config/s3.config';
 import { AuthModule } from './core/auth/auth.module';
@@ -21,12 +21,17 @@ import midtransConfig from './config/midtrans.config';
 import { MidtransModule } from './common/services/midtrans/midtrans.module';
 import { AttendanceModule } from './core/attendance/attendance.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { DashboardModule } from './core/dashboard/dashboard.module';
+import redisConfig from './config/redis.config';
+import { CacheModule } from '@nestjs/cache-manager';
+import Keyv from 'keyv';
+import KeyvRedis from '@keyv/redis';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, s3Config, mailerConfig, midtransConfig],
+      load: [appConfig, s3Config, mailerConfig, midtransConfig, redisConfig],
     }),
     AuthModule,
     CompanyModule,
@@ -37,6 +42,26 @@ import { ScheduleModule } from '@nestjs/schedule';
     MidtransModule,
     AttendanceModule,
     ScheduleModule.forRoot(),
+    DashboardModule,
+    CacheModule.registerAsync({
+      isGlobal: true,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL');
+        const namespace = config.get<string>('APP_NAME');
+        if (!redisUrl) throw new Error('REDIS_URL is required');
+
+        return {
+          ttl: 60_000,
+          stores: [
+            new Keyv({
+              store: new KeyvRedis(redisUrl),
+              namespace: `${namespace}-cache`,
+            }),
+          ],
+        };
+      },
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],
