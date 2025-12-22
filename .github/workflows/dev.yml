@@ -39,7 +39,7 @@ jobs:
     needs: build-and-push
 
     steps:
-      - name: 🚢 Deploy to VPS Server
+      - name: 🚢 Deploy App
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
@@ -90,3 +90,25 @@ jobs:
             docker exec gajadicair-api bun prisma migrate deploy
 
             echo "✅ Deployment to Development environment completed successfully!"
+      
+      - name: 🚢 Deploy Prisma Studio
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "🛑 Stopping old prisma studio (if exists)..."
+            docker stop gajadicair-prisma-studio || true
+            docker rm gajadicair-prisma-studio || true
+
+            echo "🧪 Running Prisma Studio (PUBLIC on :5555)..."
+            docker run -d \
+              --name gajadicair-prisma-studio \
+              --network postgis-setup_postgis-network \
+              --restart unless-stopped \
+              -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              -p 5555:5555 \
+              kanzen523/gajadicair-api:latest \
+              bunx prisma studio --hostname 0.0.0.0 --port 5555
+      

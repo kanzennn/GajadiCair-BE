@@ -4,7 +4,6 @@ import { AttendanceController } from './attendance.controller';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { FaceRecognitionService } from '../face-recognition/face-recognition.service';
 import { AttendanceJobService } from 'src/jobs/attendance.job';
-import { EmployeeService } from '../employee/employee.service';
 import { EmployeeModule } from '../employee/employee.module';
 
 @Module({
