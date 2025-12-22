@@ -7,6 +7,7 @@ import {
   UseInterceptors,
   UploadedFile,
   Get,
+  Put,
 } from '@nestjs/common';
 import { AttendanceService } from './attendance.service';
 import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
@@ -16,6 +17,7 @@ import { BadRequestException } from 'src/common/exceptions/badRequest.exception'
 import { CheckInDto } from './dto/check-in.dto';
 import { successResponse } from 'src/utils/response.utils';
 import { CompanyAuthGuard } from '../auth/guards/company.guard';
+import { UpdateAttendanceSettingDto } from './dto/update-attendance-setting.dto';
 
 @Controller({ version: '1' })
 export class AttendanceController {
@@ -101,5 +103,23 @@ export class AttendanceController {
 
   @Get('company/attendance/setting')
   @UseGuards(CompanyAuthGuard)
-  async getAttendanceSetting() {}
+  async getAttendanceSetting(@Req() req: Request & { user: TokenPayloadDto }) {
+    const data = await this.attendanceService.getAttendanceSetting(
+      req.user.sub,
+    );
+    return successResponse(data, 'Attendance setting retrieved successfully');
+  }
+
+  @Put('company/attendance/setting')
+  @UseGuards(CompanyAuthGuard)
+  async updateAttendanceSetting(
+    @Req() req: Request & { user: TokenPayloadDto },
+    @Body() dto: UpdateAttendanceSettingDto,
+  ) {
+    const data = await this.attendanceService.updateAttendanceSetting(
+      req.user.sub,
+      dto,
+    );
+    return successResponse(data, 'Attendance setting retrieved successfully');
+  }
 }

@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { FaceRecognitionService } from '../face-recognition/face-recognition.service';
-import { startOfDay } from 'src/utils/date.utils';
+import {
+  nowMinutesJakarta,
+  startOfDay,
+  timeToMinutesFromDb,
+} from 'src/utils/date.utils';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { EmployeeService } from '../employee/employee.service';
+import { UpdateAttendanceSettingDto } from './dto/update-attendance-setting.dto';
 
 @Injectable()
 export class AttendanceService {
@@ -22,6 +27,7 @@ export class AttendanceService {
   ) {
     const today = startOfDay();
     const nowTime = new Date();
+    const nowMin = nowMinutesJakarta(nowTime);
 
     await this.faceRecognitionService.verifyFace(file, employeeId);
 
@@ -50,31 +56,17 @@ export class AttendanceService {
       const company = employee.company;
 
       if (company.attendance_open_time) {
-        const attendanceOpenTime = new Date(nowTime);
-        attendanceOpenTime.setHours(
-          company.attendance_open_time.getHours(),
-          company.attendance_open_time.getMinutes(),
-          0,
-          0,
-        );
-        if (nowTime < attendanceOpenTime) {
+        const openMin = timeToMinutesFromDb(company.attendance_open_time);
+        if (nowMin < openMin)
           throw new BadRequestException(
             'Attendance is not open yet at this time',
           );
-        }
       }
 
       if (company.attendance_close_time) {
-        const attendanceCloseTime = new Date(nowTime);
-        attendanceCloseTime.setHours(
-          company.attendance_close_time.getHours(),
-          company.attendance_close_time.getMinutes(),
-          0,
-          0,
-        );
-        if (nowTime > attendanceCloseTime) {
+        const closeMin = timeToMinutesFromDb(company.attendance_close_time);
+        if (nowMin > closeMin)
           throw new BadRequestException('Attendance is already closed');
-        }
       }
 
       if (company.attendance_location_enabled) {
@@ -463,5 +455,144 @@ export class AttendanceService {
     }
 
     return (now.getTime() - workStartToday.getTime()) / 3600000;
+  }
+
+  async getAttendanceSetting(companyId: string) {
+    const setting = await this.prisma.company.findUnique({
+      where: { company_id: companyId },
+      select: {
+        minimum_hours_per_day: true,
+        attendance_open_time: true,
+        attendance_close_time: true,
+        work_start_time: true,
+        attendance_tolerance_minutes: true,
+        attendance_location_enabled: true,
+        attendance_radius_meters: true,
+      },
+    });
+
+    const rows = await this.prisma.$queryRaw<
+      { latitude: number | null; longitude: number | null }[]
+    >`
+    SELECT
+      ST_Y(attendance_location::geometry) AS latitude,
+      ST_X(attendance_location::geometry) AS longitude
+    FROM companies
+    WHERE company_id = ${companyId}
+    LIMIT 1
+  `;
+
+    const location = rows[0]
+      ? { latitude: rows[0].latitude, longitude: rows[0].longitude }
+      : { latitude: null, longitude: null };
+
+    return {
+      ...setting,
+      attendance_location: location, // { latitude, longitude }
+    };
+  }
+
+  async updateAttendanceSetting(
+    companyId: string,
+    dto: Partial<UpdateAttendanceSettingDto>,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      // 1) Update fields yang support prisma
+      await tx.company.update({
+        where: { company_id: companyId },
+        data: {
+          minimum_hours_per_day: dto.minimum_hours_per_day,
+          attendance_tolerance_minutes: dto.attendance_tolerance_minutes,
+          payroll_day_of_month: dto.payroll_day_of_month,
+          attendance_location_enabled: dto.attendance_location_enabled,
+          attendance_radius_meters: dto.attendance_radius_meters,
+        },
+      });
+
+      // 2) Update TIME columns via raw
+      if (dto.attendance_open_time !== undefined) {
+        await tx.$executeRaw`
+        UPDATE companies
+        SET attendance_open_time = ${dto.attendance_open_time}::time
+        WHERE company_id = ${companyId}
+      `;
+      }
+      if (dto.attendance_close_time !== undefined) {
+        await tx.$executeRaw`
+        UPDATE companies
+        SET attendance_close_time = ${dto.attendance_close_time}::time
+        WHERE company_id = ${companyId}
+      `;
+      }
+      if (dto.work_start_time !== undefined) {
+        await tx.$executeRaw`
+        UPDATE companies
+        SET work_start_time = ${dto.work_start_time}::time
+        WHERE company_id = ${companyId}
+      `;
+      }
+
+      // 3) ✅ Update LOCATION (geography) via raw
+      if (dto.attendance_location_enabled === true) {
+        if (dto.latitude == null || dto.longitude == null) {
+          throw new BadRequestException(
+            'latitude & longitude wajib ketika attendance_location_enabled = true',
+          );
+        }
+
+        await tx.$executeRaw`
+        UPDATE companies
+        SET attendance_location =
+          ST_SetSRID(
+            ST_MakePoint(${dto.longitude}::double precision, ${dto.latitude}::double precision),
+            4326
+          )::geography
+        WHERE company_id = ${companyId}
+      `;
+      }
+
+      // kalau explicit dimatikan → null-kan location
+      if (dto.attendance_location_enabled === false) {
+        await tx.$executeRaw`
+        UPDATE companies
+        SET attendance_location = NULL
+        WHERE company_id = ${companyId}
+      `;
+      }
+
+      // 4) Read location + updated data (pakai tx, bukan this.prisma)
+      const rows = await tx.$queryRaw<
+        { latitude: number | null; longitude: number | null }[]
+      >`
+      SELECT
+        ST_Y(attendance_location::geometry) AS latitude,
+        ST_X(attendance_location::geometry) AS longitude
+      FROM companies
+      WHERE company_id = ${companyId}
+      LIMIT 1
+    `;
+
+      const location = rows[0]
+        ? { latitude: rows[0].latitude, longitude: rows[0].longitude }
+        : { latitude: null, longitude: null };
+
+      const updatedData = await tx.company.findUnique({
+        where: { company_id: companyId },
+        select: {
+          minimum_hours_per_day: true,
+          attendance_open_time: true,
+          attendance_close_time: true,
+          work_start_time: true,
+          attendance_tolerance_minutes: true,
+          attendance_location_enabled: true,
+          attendance_radius_meters: true,
+        },
+      });
+
+      return {
+        ...updatedData,
+        attendance_location: location,
+      };
+    });
   }
 }
