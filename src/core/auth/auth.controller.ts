@@ -138,8 +138,6 @@ export class AuthControllerV1 {
       dto.avatar_uri = picture.key;
     }
 
-    console.log(dto);
-
     const updatedCompany = await this.companyService.updateCompanyProfile(
       req.user.sub,
       dto,

@@ -354,4 +354,58 @@ export class SubscriptionService {
       return true;
     });
   }
+
+  async checkDowngradeSubscription(company_id: string) {
+    const company = await this.companyService.getCompanyById(company_id);
+    if (!company) throw new BadRequestException('Company not found');
+
+    const now = new Date();
+    const expiresAt = company.plan_expiration;
+    const currentPlan = company.level_plan ?? 0;
+    if (currentPlan === 0) {
+      return {
+        can_downgrade: false,
+        message: 'No active subscription to downgrade',
+      };
+    }
+    if (!expiresAt || expiresAt.getTime() <= now.getTime()) {
+      return {
+        can_downgrade: false,
+        message: 'No active subscription to downgrade',
+      };
+    }
+    const daysLeft = daysLeftCeil(expiresAt, now);
+
+    if (daysLeft > 5) {
+      return {
+        can_downgrade: false,
+        message: `You can only downgrade when there are 5 days or less remaining. Current remaining days: ${daysLeft} days`,
+      };
+    }
+
+    return {
+      can_downgrade: true,
+      message: 'You can downgrade your subscription plan now',
+    };
+  }
+
+  async getSubscriptionStatus(company_id: string) {
+    const company = await this.companyService.getCompanyById(company_id);
+    if (!company) throw new BadRequestException('Company not found');
+
+    const now = new Date();
+    const expiresAt = company.plan_expiration;
+
+    if (!expiresAt || expiresAt.getTime() <= now.getTime()) {
+      return {
+        level_plan: 0,
+        plan_expiration: null,
+      };
+    }
+
+    return {
+      level_plan: company.level_plan ?? 0,
+      plan_expiration: company.plan_expiration,
+    };
+  }
 }

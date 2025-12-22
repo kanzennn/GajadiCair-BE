@@ -47,4 +47,30 @@ export class SubscriptionController {
     await this.subscriptionService.handleMidtransWebhook(req.body);
     return successResponse(null, 'Webhook processed successfully');
   }
+
+  @Get('check-downgrade')
+  @UseGuards(CompanyAuthGuard)
+  async checkDowngradeSubscription(
+    @Req() req: Request & { user: TokenPayloadDto },
+  ) {
+    const result = await this.subscriptionService.checkDowngradeSubscription(
+      req.user.sub,
+    );
+    return successResponse(
+      result,
+      'Downgrade subscription check completed successfully',
+    );
+  }
+
+  @Get('status')
+  @UseGuards(CompanyAuthGuard)
+  async getSubscriptionStatus(@Req() req: Request & { user: TokenPayloadDto }) {
+    const result = await this.subscriptionService.getSubscriptionStatus(
+      req.user.sub,
+    );
+    return successResponse(
+      result,
+      'Subscription status retrieved successfully',
+    );
+  }
 }

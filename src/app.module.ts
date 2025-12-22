@@ -27,6 +27,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import Keyv from 'keyv';
 import KeyvRedis from '@keyv/redis';
 import { S3Module } from './common/services/s3/s3.module';
+import { LeaveApplicationModule } from './core/leave-application/leave-application.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { S3Module } from './common/services/s3/s3.module';
       },
     }),
     S3Module,
+    LeaveApplicationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

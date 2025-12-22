@@ -190,6 +190,7 @@ model Employee {
   bank Bank? @relation(fields: [bank_id], references: [bank_id])
   attendances      EmployeeAttendance[]
   payroll_logs     PayrollLog[]
+  leave_applications  EmployeeLeaveApplication[]
 
   @@map("employees")
 }
@@ -225,6 +226,30 @@ model EmployeeAttendance {
 
   @@unique([employee_id, attendance_date])
   @@map("employee_attendances")
+}
+
+enum LeaveApplicationType {
+  LEAVE
+  SICK
+}
+
+model EmployeeLeaveApplication {
+  employee_leave_application_id   String     @id @default(uuid())
+  employee_id                     String
+  start_date                      DateTime   @db.Date
+  end_date                        DateTime   @db.Date
+  reason                          String
+  status                          Int     @default(0)   // 0: pending, 1: approved, 2: rejected
+  attachment_uri                  String?
+  type                            LeaveApplicationType @default(LEAVE)
+
+  created_at                      DateTime   @default(now())
+  updated_at                      DateTime   @updatedAt
+  deleted_at                      DateTime?
+
+  employee Employee @relation(fields: [employee_id], references: [employee_id], onDelete: Cascade)
+
+  @@map("employee_leave_applications")
 }
 
 model PayrollLog {
