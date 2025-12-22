@@ -267,8 +267,6 @@ export class AttendanceService {
         );
       }
 
-      console.log(existing);
-
       const updated = await tx.employeeAttendance.update({
         where: {
           employee_attendance_id: existing.employee_attendance_id,
@@ -388,6 +386,75 @@ export class AttendanceService {
       can_check_out: true,
       in_hours: minHours,
       worked_hours: total_work_hours,
+      reason: null,
+    };
+  }
+
+  async canEmployeeCheckIn(employeeId: string) {
+    const isEmployee =
+      await this.employeeService.getEmployeeByIdWithCompany(employeeId);
+
+    if (!isEmployee) {
+      throw new BadRequestException('Employee not found');
+    }
+
+    const company = isEmployee.company;
+
+    const nowTime = new Date();
+
+    const nowMin = nowMinutesJakarta(nowTime);
+
+    if (company.attendance_open_time) {
+      const openMin = timeToMinutesFromDb(company.attendance_open_time);
+      if (nowMin < openMin) {
+        return {
+          can_check_in: false,
+          remaining_time_until_closed: 0,
+          opened_time: company.attendance_open_time,
+          closed_time: company.attendance_close_time,
+          reason: 'Attendance is not open yet at this time',
+        };
+      }
+    }
+
+    if (company.attendance_close_time) {
+      const closeMin = timeToMinutesFromDb(company.attendance_close_time);
+      if (nowMin > closeMin) {
+        return {
+          can_check_in: false,
+          remaining_time_until_closed: 0,
+          opened_time: company.attendance_open_time,
+          closed_time: company.attendance_close_time,
+          reason: 'Attendance is already closed',
+        };
+      }
+    }
+
+    const isAlreadyCheckedIn = await this.prisma.employeeAttendance.findFirst({
+      where: {
+        employee_id: employeeId,
+        attendance_date: startOfDay(),
+        deleted_at: null,
+      },
+    });
+
+    if (isAlreadyCheckedIn) {
+      return {
+        can_check_in: false,
+        remaining_time_until_closed: 0,
+        opened_time: company.attendance_open_time,
+        closed_time: company.attendance_close_time,
+        reason: 'Already checked in today',
+      };
+    }
+
+    return {
+      can_check_in: true,
+      remaining_time_until_closed: company.attendance_close_time
+        ? timeToMinutesFromDb(company.attendance_close_time) - nowMin
+        : null,
+      opened_time: company.attendance_open_time,
+      closed_time: company.attendance_close_time,
       reason: null,
     };
   }

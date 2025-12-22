@@ -101,6 +101,15 @@ export class AttendanceController {
     );
   }
 
+  @Get('employee/attendance/check-in-check')
+  @UseGuards(EmployeeAuthGuard)
+  async checkIfEmployeeCanCheckIn(
+    @Req() req: Request & { user: TokenPayloadDto },
+  ) {
+    const data = await this.attendanceService.canEmployeeCheckIn(req.user.sub);
+    return successResponse(data, 'Check-in eligibility retrieved successfully');
+  }
+
   @Get('company/attendance/setting')
   @UseGuards(CompanyAuthGuard)
   async getAttendanceSetting(@Req() req: Request & { user: TokenPayloadDto }) {
