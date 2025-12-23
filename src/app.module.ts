@@ -29,6 +29,7 @@ import KeyvRedis from '@keyv/redis';
 import { S3Module } from './common/services/s3/s3.module';
 import { LeaveApplicationModule } from './core/leave-application/leave-application.module';
 import { WorkingDayModule } from './core/working-day/working-day.module';
+import { CustomHolidayModule } from './core/custom-holiday/custom-holiday.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { WorkingDayModule } from './core/working-day/working-day.module';
     S3Module,
     LeaveApplicationModule,
     WorkingDayModule,
+    CustomHolidayModule,
   ],
   controllers: [AppController],
   providers: [AppService],

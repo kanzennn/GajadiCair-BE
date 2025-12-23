@@ -5,11 +5,11 @@ import { CompanyAuthGuard } from '../auth/guards/company.guard';
 import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
 import { successResponse } from 'src/utils/response.utils';
 
-@Controller({ version: '1' })
+@Controller({ path: 'company/working-day', version: '1' })
 export class WorkingDayController {
   constructor(private readonly workingDayService: WorkingDayService) {}
 
-  @Get('company/working-day')
+  @Get()
   @UseGuards(CompanyAuthGuard)
   async getWorkingDay(@Req() req: Request & { user: TokenPayloadDto }) {
     return successResponse(
@@ -18,7 +18,7 @@ export class WorkingDayController {
     );
   }
 
-  @Put('company/working-day')
+  @Put()
   @UseGuards(CompanyAuthGuard)
   async updateWorkingDay(
     @Req() req: Request & { user: TokenPayloadDto },
