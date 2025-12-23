@@ -5,6 +5,7 @@ import {
   addDaysUtc,
   dateOnlyUtc,
   nowMinutesJakarta,
+  parseIsoDateOrTodayUtc,
   startOfDay,
   timeToMinutesFromDb,
   toYmd,
@@ -15,6 +16,9 @@ import { CheckOutDto } from './dto/check-out.dto';
 import { EmployeeService } from '../employee/employee.service';
 import { UpdateAttendanceSettingDto } from './dto/update-attendance-setting.dto';
 import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
+import { AttendanceByCompanyQueryDto } from './dto/attendance-by-company-query.dto';
+import { CompanyService } from '../company/company.service';
+import { UpdateAttendanceByCompanyDto } from './dto/update-attendance-by-company';
 
 @Injectable()
 export class AttendanceService {
@@ -22,6 +26,7 @@ export class AttendanceService {
     private readonly prisma: PrismaService,
     private readonly faceRecognitionService: FaceRecognitionService,
     private readonly employeeService: EmployeeService,
+    private readonly companyService: CompanyService,
   ) {}
 
   async checkInFace(
@@ -667,11 +672,16 @@ export class AttendanceService {
     });
   }
 
-  async getCompanyAttendanceSummary(
+  async getAttendanceSummaryByCompany(
     companyId: string,
     query?: AttendanceSummaryQueryDto,
   ) {
     // Default: 7 hari terakhir (hari ini inklusif)
+    const isCompanyExist = await this.companyService.getCompanyById(companyId);
+    if (!isCompanyExist) {
+      throw new BadRequestException('Company not found');
+    }
+
     const today = dateOnlyUtc(new Date());
     const defaultStart = addDaysUtc(today, -6);
     const defaultEnd = today;
@@ -801,5 +811,133 @@ export class AttendanceService {
         };
       }),
     };
+  }
+
+  async getAttendanceByCompany(
+    companyId: string,
+    query?: AttendanceByCompanyQueryDto,
+  ) {
+    const company = await this.companyService.getCompanyById(companyId);
+    if (!company) throw new BadRequestException('Company not found');
+
+    const day = parseIsoDateOrTodayUtc(query?.date);
+
+    // Ambil semua employee, dan attendance yg match tanggal itu
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        company_id: companyId,
+        deleted_at: null,
+        attendances: {
+          some: {
+            attendance_date: day,
+            deleted_at: null,
+          },
+        },
+      },
+      select: {
+        employee_id: true,
+        name: true,
+        email: true,
+        avatar_uri: true,
+        attendances: {
+          where: {
+            deleted_at: null,
+            attendance_date: day, // karena @db.Date → match exact date
+          },
+          select: {
+            employee_attendance_id: true,
+            attendance_date: true,
+            status: true,
+            is_late: true,
+            late_minutes: true,
+            check_in_time: true,
+            check_out_time: true,
+            total_work_hours: true,
+            absent_reason: true,
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    // rapihin: attendances (array) → attendance (single | null)
+    return {
+      date: day.toISOString().slice(0, 10),
+      employees: employees.map((e) => ({
+        employee_id: e.employee_id,
+        name: e.name,
+        email: e.email,
+        avatar_uri: e.avatar_uri,
+        attendance: e.attendances[0] ?? null,
+      })),
+    };
+  }
+
+  async updateAttendanceByCompany(
+    companyId: string,
+    dto: UpdateAttendanceByCompanyDto,
+  ) {
+    const company = await this.companyService.getCompanyById(companyId);
+    if (!company) throw new BadRequestException('Company not found');
+
+    // ambil attendance + employee untuk validasi ownership
+    const attendance = await this.prisma.employeeAttendance.findFirst({
+      where: {
+        employee_attendance_id: dto.employee_attendance_id,
+        deleted_at: null,
+        employee: {
+          company_id: companyId,
+        },
+      },
+      include: {
+        employee: true,
+      },
+    });
+
+    if (!attendance) {
+      throw new BadRequestException('Attendance not found for this company');
+    }
+
+    // parse time
+    const checkIn = dto.check_in_time ? new Date(dto.check_in_time) : null;
+
+    const checkOut = dto.check_out_time ? new Date(dto.check_out_time) : null;
+
+    // ❌ check_out < check_in
+    if (checkIn && checkOut && checkOut < checkIn) {
+      throw new BadRequestException(
+        'check_out_time cannot be earlier than check_in_time',
+      );
+    }
+
+    // ❌ status ABSENT / LEAVE / SICK tidak boleh punya waktu masuk/keluar
+    if (
+      ['ABSENT', 'LEAVE', 'SICK'].includes(dto.status) &&
+      (checkIn || checkOut)
+    ) {
+      throw new BadRequestException(
+        `${dto.status} attendance cannot have check-in or check-out time`,
+      );
+    }
+
+    // auto set is_late
+    const isLate =
+      dto.late_minutes !== undefined
+        ? dto.late_minutes > 0
+        : (dto.is_late ?? false);
+
+    return this.prisma.employeeAttendance.update({
+      where: {
+        employee_attendance_id: dto.employee_attendance_id,
+      },
+      data: {
+        status: dto.status,
+        check_in_time: checkIn,
+        check_out_time: checkOut,
+        is_late: isLate,
+        late_minutes: dto.late_minutes ?? null,
+        absent_reason: dto.absent_reason ?? null,
+      },
+    });
   }
 }

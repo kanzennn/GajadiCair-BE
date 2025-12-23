@@ -1,3 +1,5 @@
+import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+
 export function startOfDay(date = new Date()) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -87,4 +89,14 @@ export function addDaysUtc(d: Date, days: number) {
 
 export function toYmd(d: Date) {
   return d.toISOString().slice(0, 10);
+}
+
+export function parseIsoDateOrTodayUtc(dateStr?: string) {
+  if (!dateStr) return dateOnlyUtc(new Date());
+
+  const d = new Date(`${dateStr}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) {
+    throw new BadRequestException('Invalid date');
+  }
+  return dateOnlyUtc(d);
 }

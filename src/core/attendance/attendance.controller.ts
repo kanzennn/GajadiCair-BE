@@ -9,6 +9,7 @@ import {
   Get,
   Put,
   Query,
+  Patch,
 } from '@nestjs/common';
 import { AttendanceService } from './attendance.service';
 import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
@@ -20,6 +21,8 @@ import { successResponse } from 'src/utils/response.utils';
 import { CompanyAuthGuard } from '../auth/guards/company.guard';
 import { UpdateAttendanceSettingDto } from './dto/update-attendance-setting.dto';
 import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
+import { AttendanceByCompanyQueryDto } from './dto/attendance-by-company-query.dto';
+import { UpdateAttendanceByCompanyDto } from './dto/update-attendance-by-company';
 
 @Controller({ version: '1' })
 export class AttendanceController {
@@ -136,17 +139,51 @@ export class AttendanceController {
 
   @Get('/company/attendance/summary')
   @UseGuards(CompanyAuthGuard)
-  async getCompanyAttendanceSumary(
+  async getAttendanceSumaryByCompany(
     @Req() req: Request & { user: TokenPayloadDto },
     @Query() query: AttendanceSummaryQueryDto,
   ) {
-    const data = await this.attendanceService.getCompanyAttendanceSummary(
+    const data = await this.attendanceService.getAttendanceSummaryByCompany(
       req.user.sub,
       query,
     );
     return successResponse(
       data,
       'Company attendance records retrieved successfully',
+    );
+  }
+
+  @Get('/company/attendance')
+  @UseGuards(CompanyAuthGuard)
+  async getAttendanceByCompany(
+    @Req() req: Request & { user: TokenPayloadDto },
+    @Query() query: AttendanceByCompanyQueryDto,
+  ) {
+    const data = await this.attendanceService.getAttendanceByCompany(
+      req.user.sub,
+      query,
+    );
+
+    return successResponse(
+      data,
+      'Company attendance records retrieved successfully',
+    );
+  }
+
+  @Patch('/company/attendance')
+  @UseGuards(CompanyAuthGuard)
+  async updateAttendanceByCompany(
+    @Req() req: Request & { user: TokenPayloadDto },
+    @Body() dto: UpdateAttendanceByCompanyDto,
+  ) {
+    const data = await this.attendanceService.updateAttendanceByCompany(
+      req.user.sub,
+      dto,
+    );
+
+    return successResponse(
+      data,
+      'Company attendance record updated successfully',
     );
   }
 }
