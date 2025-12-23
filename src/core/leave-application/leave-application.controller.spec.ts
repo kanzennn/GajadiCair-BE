@@ -11,7 +11,9 @@ describe('LeaveApplicationController', () => {
       providers: [LeaveApplicationService],
     }).compile();
 
-    controller = module.get<LeaveApplicationController>(LeaveApplicationController);
+    controller = module.get<LeaveApplicationController>(
+      LeaveApplicationController,
+    );
   });
 
   it('should be defined', () => {

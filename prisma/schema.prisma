@@ -54,6 +54,8 @@ model Company {
   employees    Employee[]
   payroll_deduction_rules  PayrollDeductionRule[]
   payroll_allowance_rules   PayrollAllowanceRule[]
+  
+  working_days  CompanyWorkingDay[]
 
   @@map("companies")
 }
@@ -296,4 +298,23 @@ model AttendanceLog {
   employee Employee @relation(fields: [employee_id], references: [employee_id], onDelete: Cascade)
 
   @@map("attendance_logs")
+}
+
+model CompanyWorkingDay {
+  company_working_day_id   String  @id @default(uuid())
+  company_id               String
+  
+  monday        Boolean   @default(true)
+  tuesday       Boolean   @default(true)
+  wednesday     Boolean   @default(true)
+  thursday      Boolean   @default(true)
+  friday        Boolean   @default(true)
+  saturday      Boolean   @default(false)
+  sunday        Boolean   @default(false)
+
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+
+  company Company @relation(fields: [company_id], references: [company_id], onDelete: Cascade)
 }

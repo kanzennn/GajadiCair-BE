@@ -10,15 +10,17 @@ import { LoginEmployeeAuthDto } from './dto/login-employee-auth.dto';
 import { TokenPayloadDto } from './dto/token-payload.dto';
 import { CompanyService } from '../company/company.service';
 import { EmployeeService } from '../employee/employee.service';
+import { S3Service } from 'src/common/services/s3/s3.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly googleOauthService: GoogleOauthService,
-    private jwtService: JwtService,
+    private readonly jwtService: JwtService,
     private readonly companyService: CompanyService,
     private readonly employeeService: EmployeeService,
+    private readonly s3Service: S3Service,
   ) {}
 
   async loginCompany(credentials: LoginAuthDto) {
@@ -113,7 +115,7 @@ export class AuthService {
       throw new BadRequestException('Google account has no email');
     }
 
-    const socialiteRecord = await this.prisma.companySocialite.findFirst({
+    let socialiteRecord = await this.prisma.companySocialite.findFirst({
       where: { socialite_id: googleId, socialite_name: 'google' },
       include: { company: true },
     });
@@ -139,18 +141,51 @@ export class AuthService {
           data: {
             email,
             name,
-            avatar_uri: picture,
+            avatar_uri: null, // sementara
             company_identifier,
           },
         });
+
+        await this.prisma.companyWorkingDay.create({
+          data: {
+            company_id: company.company_id,
+            monday: true,
+            tuesday: true,
+            wednesday: true,
+            thursday: true,
+            friday: true,
+            saturday: false,
+            sunday: false,
+          },
+        });
+
+        // upload picture google -> bucket kamu
+        if (picture) {
+          const { buffer, contentType } =
+            await this.downloadImageToBuffer(picture);
+
+          const uploaded = await this.s3Service.uploadBuffer({
+            key: `company/profile-picture/${Date.now()}-${company.company_id}`,
+            buffer,
+            contentType,
+            cacheControl: 'public, max-age=31536000',
+          });
+
+          // simpan url/key hasil upload
+          company = await this.prisma.company.update({
+            where: { company_id: company.company_id },
+            data: { avatar_uri: uploaded.url }, // atau uploaded.key kalau kamu simpan key saja
+          });
+        }
       }
 
-      await this.prisma.companySocialite.create({
+      socialiteRecord = await this.prisma.companySocialite.create({
         data: {
           company_id: company.company_id,
           socialite_id: googleId,
           socialite_name: 'google',
         },
+        include: { company: true },
       });
     }
 
@@ -186,6 +221,27 @@ export class AuthService {
     };
   }
 
+  private async downloadImageToBuffer(url: string) {
+    const res = await fetch(url, {
+      // kadang Google butuh header user-agent
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+
+    if (!res.ok) {
+      throw new BadRequestException(
+        `Failed to download google picture: ${res.status}`,
+      );
+    }
+
+    const contentType = res.headers.get('content-type') ?? 'image/jpeg';
+    const arrayBuffer = await res.arrayBuffer();
+
+    return {
+      buffer: Buffer.from(arrayBuffer),
+      contentType,
+    };
+  }
+
   async registerCompany(registerAuthDto: RegisterAuthDto) {
     const existingcompany = await this.prisma.company.findFirst({
       where: { email: registerAuthDto.email },
@@ -212,12 +268,21 @@ export class AuthService {
         name: registerAuthDto.name,
         password: hashedPassword,
         company_identifier,
+        last_login: new Date(),
       },
     });
 
-    await this.prisma.company.update({
-      where: { company_id: company.company_id },
-      data: { last_login: new Date() },
+    await this.prisma.companyWorkingDay.create({
+      data: {
+        company_id: company.company_id,
+        monday: true,
+        tuesday: true,
+        wednesday: true,
+        thursday: true,
+        friday: true,
+        saturday: false,
+        sunday: false,
+      },
     });
 
     const payload = {
