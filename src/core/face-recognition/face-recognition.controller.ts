@@ -38,7 +38,7 @@ export class FaceRecognitionController {
   // 20 Image
   @Post('enroll-face')
   @UseGuards(EmployeeAuthGuard)
-  @UseInterceptors(FilesInterceptor('files', 60))
+  @UseInterceptors(FilesInterceptor('files', 50))
   async enrollFace(
     @UploadedFiles() files: Express.Multer.File[],
     @Req() req: Request & { user: TokenPayloadDto },
