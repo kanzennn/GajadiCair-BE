@@ -712,7 +712,12 @@ export class AttendanceService {
           },
           select: {
             attendance_date: true,
-            status: true, // PRESENT | ABSENT | LEAVE | SICK
+            status: true,
+            is_late: true,
+            late_minutes: true,
+            total_work_hours: true,
+            check_in_time: true,
+            check_out_time: true,
           },
         },
       },
@@ -728,11 +733,27 @@ export class AttendanceService {
     return {
       range: { start_date: toYmd(start), end_date: toYmd(end) },
       employees: employees.map((emp) => {
-        const byDate = new Map<string, string>();
+        const byDate = new Map<
+          string,
+          {
+            status: string;
+            is_late: boolean;
+            late_minutes: number | null;
+            check_in_time: Date | null;
+            check_out_time: Date | null;
+          }
+        >();
 
         for (const a of emp.attendances) {
           if (!a.attendance_date) continue;
-          byDate.set(toYmd(dateOnlyUtc(a.attendance_date)), a.status);
+
+          byDate.set(toYmd(dateOnlyUtc(a.attendance_date)), {
+            status: a.status,
+            is_late: a.is_late,
+            late_minutes: a.late_minutes,
+            check_in_time: a.check_in_time,
+            check_out_time: a.check_out_time,
+          });
         }
 
         // init counter
@@ -745,7 +766,9 @@ export class AttendanceService {
         };
 
         const attendance_histories = days.map((tanggal) => {
-          const status = byDate.get(tanggal) ?? '-';
+          const record = byDate.get(tanggal);
+
+          const status = record?.status ?? '-';
 
           // hitung status
           if (summary[status] !== undefined) {
@@ -754,7 +777,18 @@ export class AttendanceService {
             summary[status] = 1;
           }
 
-          return { tanggal, status };
+          return {
+            tanggal,
+            status,
+            is_late: record?.is_late ?? false,
+            late_minutes: record?.late_minutes ?? 0,
+            check_in_time: record?.check_in_time
+              ? record.check_in_time.toISOString()
+              : null,
+            check_out_time: record?.check_out_time
+              ? record.check_out_time.toISOString()
+              : null,
+          };
         });
 
         return {
