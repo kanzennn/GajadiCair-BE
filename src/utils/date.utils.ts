@@ -72,3 +72,19 @@ export function daysLeftCeil(expiresAt: Date, now: Date) {
   const ms = expiresAt.getTime() - now.getTime();
   return Math.ceil(ms / 86400000);
 }
+
+export function dateOnlyUtc(d: Date) {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+  );
+}
+
+export function addDaysUtc(d: Date, days: number) {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() + days);
+  return x;
+}
+
+export function toYmd(d: Date) {
+  return d.toISOString().slice(0, 10);
+}

@@ -2,15 +2,19 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { FaceRecognitionService } from '../face-recognition/face-recognition.service';
 import {
+  addDaysUtc,
+  dateOnlyUtc,
   nowMinutesJakarta,
   startOfDay,
   timeToMinutesFromDb,
+  toYmd,
 } from 'src/utils/date.utils';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import { EmployeeService } from '../employee/employee.service';
 import { UpdateAttendanceSettingDto } from './dto/update-attendance-setting.dto';
+import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
 
 @Injectable()
 export class AttendanceService {
@@ -661,5 +665,107 @@ export class AttendanceService {
         attendance_location: location,
       };
     });
+  }
+
+  async getCompanyAttendanceSummary(
+    companyId: string,
+    query?: AttendanceSummaryQueryDto,
+  ) {
+    // Default: 7 hari terakhir (hari ini inklusif)
+    const today = dateOnlyUtc(new Date());
+    const defaultStart = addDaysUtc(today, -6);
+    const defaultEnd = today;
+
+    const startDate = query?.start_date
+      ? new Date(`${query.start_date}T00:00:00.000Z`)
+      : defaultStart;
+
+    const endDate = query?.end_date
+      ? new Date(`${query.end_date}T00:00:00.000Z`)
+      : defaultEnd;
+
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      throw new BadRequestException('Invalid start_date or end_date');
+    }
+
+    if (startDate > endDate) {
+      throw new BadRequestException(
+        'start_date cannot be greater than end_date',
+      );
+    }
+
+    const start = dateOnlyUtc(startDate);
+    const end = dateOnlyUtc(endDate);
+    const endExclusive = addDaysUtc(end, 1);
+
+    const employees = await this.prisma.employee.findMany({
+      where: { company_id: companyId, deleted_at: null },
+      select: {
+        employee_id: true,
+        name: true,
+        email: true,
+        avatar_uri: true,
+        attendances: {
+          where: {
+            deleted_at: null,
+            attendance_date: { gte: start, lt: endExclusive },
+          },
+          select: {
+            attendance_date: true,
+            status: true, // PRESENT | ABSENT | LEAVE | SICK
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    // list tanggal
+    const days: string[] = [];
+    for (let d = new Date(start); d < endExclusive; d = addDaysUtc(d, 1)) {
+      days.push(toYmd(d));
+    }
+
+    return {
+      range: { start_date: toYmd(start), end_date: toYmd(end) },
+      employees: employees.map((emp) => {
+        const byDate = new Map<string, string>();
+
+        for (const a of emp.attendances) {
+          if (!a.attendance_date) continue;
+          byDate.set(toYmd(dateOnlyUtc(a.attendance_date)), a.status);
+        }
+
+        // init counter
+        const summary: Record<string, number> = {
+          PRESENT: 0,
+          ABSENT: 0,
+          LEAVE: 0,
+          SICK: 0,
+          '-': 0,
+        };
+
+        const attendance_histories = days.map((tanggal) => {
+          const status = byDate.get(tanggal) ?? '-';
+
+          // hitung status
+          if (summary[status] !== undefined) {
+            summary[status]++;
+          } else {
+            summary[status] = 1;
+          }
+
+          return { tanggal, status };
+        });
+
+        return {
+          employee_id: emp.employee_id,
+          email: emp.email,
+          name: emp.name,
+          avatar_uri: emp.avatar_uri,
+          attendance_histories,
+          summary,
+        };
+      }),
+    };
   }
 }

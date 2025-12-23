@@ -8,6 +8,7 @@ import {
   UploadedFile,
   Get,
   Put,
+  Query,
 } from '@nestjs/common';
 import { AttendanceService } from './attendance.service';
 import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
@@ -18,6 +19,7 @@ import { CheckInDto } from './dto/check-in.dto';
 import { successResponse } from 'src/utils/response.utils';
 import { CompanyAuthGuard } from '../auth/guards/company.guard';
 import { UpdateAttendanceSettingDto } from './dto/update-attendance-setting.dto';
+import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
 
 @Controller({ version: '1' })
 export class AttendanceController {
@@ -130,5 +132,21 @@ export class AttendanceController {
       dto,
     );
     return successResponse(data, 'Attendance setting retrieved successfully');
+  }
+
+  @Get('/company/attendance/summary')
+  @UseGuards(CompanyAuthGuard)
+  async getCompanyAttendanceSumary(
+    @Req() req: Request & { user: TokenPayloadDto },
+    @Query() query: AttendanceSummaryQueryDto,
+  ) {
+    const data = await this.attendanceService.getCompanyAttendanceSummary(
+      req.user.sub,
+      query,
+    );
+    return successResponse(
+      data,
+      'Company attendance records retrieved successfully',
+    );
   }
 }

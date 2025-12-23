@@ -15,7 +15,6 @@ export class AttendanceJobService {
 
     // 1️⃣ Tentukan tanggal kemarin (00:00)
     const now = new Date();
-    console.log(now.toISOString());
     const targetDate = new Date(now);
     targetDate.setDate(targetDate.getDate() - 1);
     targetDate.setHours(0, 0, 0, 0);
