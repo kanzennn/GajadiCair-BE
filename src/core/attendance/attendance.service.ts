@@ -555,6 +555,7 @@ export class AttendanceService {
         attendance_open_time: true,
         attendance_close_time: true,
         work_start_time: true,
+        payroll_day_of_month: true,
         attendance_tolerance_minutes: true,
         attendance_location_enabled: true,
         attendance_radius_meters: true,

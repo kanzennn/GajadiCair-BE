@@ -58,7 +58,7 @@ export class UpdateAttendanceSettingDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(31)
+  @Max(27)
   payroll_day_of_month?: number;
 
   @IsOptional()

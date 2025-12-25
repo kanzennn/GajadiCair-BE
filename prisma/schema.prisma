@@ -289,10 +289,17 @@ model PayrollLog {
   @@map("payroll_logs")
 }
 
+enum PayrollDetailType {
+  DEDUCTION
+  ALLOWANCE
+  BASE_SALARY
+}
+
 model PayrollDetail {
   payroll_detail_id   String     @id @default(uuid())
   payroll_log_id      String
   description        String
+  type PayrollDetailType
   amount             Float
 
   created_at         DateTime   @default(now())

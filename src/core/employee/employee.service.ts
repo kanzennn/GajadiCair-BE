@@ -84,12 +84,46 @@ export class EmployeeService {
   async getEmployeesByCompany(company_id: string) {
     return await this.prisma.employee.findMany({
       where: { company_id, deleted_at: null },
+      select: {
+        employee_id: true,
+        name: true,
+        email: true,
+        username: true,
+        company_id: true,
+        is_active: true,
+        base_salary: true,
+        is_face_enrolled: true,
+        bank_id: true,
+        bank_account_number: true,
+        tax_identification_number: true,
+        avatar_uri: true,
+        last_login: true,
+        created_at: true,
+        updated_at: true,
+      },
     });
   }
 
   async getEmployeeByIdByCompany(company_id: string, employee_id: string) {
     return await this.prisma.employee.findFirst({
       where: { company_id, employee_id, deleted_at: null },
+      select: {
+        employee_id: true,
+        name: true,
+        email: true,
+        username: true,
+        company_id: true,
+        is_active: true,
+        base_salary: true,
+        is_face_enrolled: true,
+        bank_id: true,
+        bank_account_number: true,
+        tax_identification_number: true,
+        avatar_uri: true,
+        last_login: true,
+        created_at: true,
+        updated_at: true,
+      },
     });
   }
 
