@@ -30,6 +30,9 @@ import { S3Module } from './common/services/s3/s3.module';
 import { LeaveApplicationModule } from './core/leave-application/leave-application.module';
 import { WorkingDayModule } from './core/working-day/working-day.module';
 import { CustomHolidayModule } from './core/custom-holiday/custom-holiday.module';
+import { PayrollModule } from './core/payroll/payroll.module';
+import { PayrollAllowanceRuleModule } from './core/payroll-allowance-rule/payroll-allowance-rule.module';
+import { PayrollDeductionRuleModule } from './core/payroll-deduction-rule/payroll-deduction-rule.module';
 
 @Module({
   imports: [
@@ -70,6 +73,9 @@ import { CustomHolidayModule } from './core/custom-holiday/custom-holiday.module
     LeaveApplicationModule,
     WorkingDayModule,
     CustomHolidayModule,
+    PayrollModule,
+    PayrollAllowanceRuleModule,
+    PayrollDeductionRuleModule,
   ],
   controllers: [AppController],
   providers: [AppService],

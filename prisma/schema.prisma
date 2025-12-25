@@ -61,13 +61,30 @@ model Company {
   @@map("companies")
 }
 
+enum PayrollDeductionType {
+  LATE       // telat
+  ABSENT     // tidak hadir
+  LEAVE     // opsional (cuti potong gaji)
+  SICK      // opsional
+}
+
+
 model PayrollDeductionRule {
   payroll_deduction_rule_id String  @id @default(uuid())
   company_id                String
+
   name                      String
-  percentage                Float?       
-  fixed_amount              Float?      
-  is_active                 Boolean       @default(true)
+  type                      PayrollDeductionType
+
+  // salah satu
+  percentage                Float?
+  fixed_amount              Float?
+
+  // khusus telat
+  per_minute                Boolean @default(false) // true = per menit
+  max_minutes               Int?     // batas menit (optional)
+
+  is_active                 Boolean  @default(true)
 
   created_at                DateTime @default(now())
   updated_at                DateTime @updatedAt
@@ -77,6 +94,7 @@ model PayrollDeductionRule {
 
   @@map("payroll_deduction_rules")
 }
+
 
 model PayrollAllowanceRule {
   payroll_allowance_rule_id String  @id @default(uuid())
