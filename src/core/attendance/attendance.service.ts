@@ -254,8 +254,12 @@ export class AttendanceService {
           check_out_time: null,
           deleted_at: null,
         },
-        orderBy: {
-          attendance_date: 'desc',
+        orderBy: { attendance_date: 'desc' },
+        select: {
+          employee_attendance_id: true,
+          check_in_time: true,
+          is_late: true,
+          status: true,
         },
       });
 
@@ -281,10 +285,15 @@ export class AttendanceService {
         );
       }
 
+      if (existing.status !== 'PRESENT') {
+        throw new BadRequestException(
+          `Cannot checkout because status is ${existing.status}`,
+        );
+      }
+
       const updated = await tx.employeeAttendance.update({
         where: {
           employee_attendance_id: existing.employee_attendance_id,
-          status: 'PRESENT',
         },
         data: {
           check_out_time: nowTime,
