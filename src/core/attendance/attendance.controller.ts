@@ -23,6 +23,7 @@ import { UpdateAttendanceSettingDto } from './dto/update-attendance-setting.dto'
 import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
 import { AttendanceByCompanyQueryDto } from './dto/attendance-by-company-query.dto';
 import { UpdateAttendanceByCompanyDto } from './dto/update-attendance-by-company';
+import { AttendanceSummaryByEmployeeQueryDto } from './dto/attendance-summary-by-employee-query.dto';
 
 @Controller({ version: '1' })
 export class AttendanceController {
@@ -184,6 +185,22 @@ export class AttendanceController {
     return successResponse(
       data,
       'Company attendance record updated successfully',
+    );
+  }
+
+  @Get('/employee/attendance/summary')
+  @UseGuards(EmployeeAuthGuard)
+  async getAttendanceSummaryByEmployee(
+    @Req() req: Request & { user: TokenPayloadDto },
+    @Query() query: AttendanceSummaryByEmployeeQueryDto,
+  ) {
+    const data = await this.attendanceService.getAttendanceSummaryByEmployee(
+      req.user.sub,
+      query,
+    );
+    return successResponse(
+      data,
+      'Employee attendance summary retrieved successfully',
     );
   }
 }

@@ -19,6 +19,7 @@ import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
 import { AttendanceByCompanyQueryDto } from './dto/attendance-by-company-query.dto';
 import { CompanyService } from '../company/company.service';
 import { UpdateAttendanceByCompanyDto } from './dto/update-attendance-by-company';
+import { AttendanceSummaryByEmployeeQueryDto } from './dto/attendance-summary-by-employee-query.dto';
 
 @Injectable()
 export class AttendanceService {
@@ -347,7 +348,7 @@ export class AttendanceService {
 
   async canEmployeeCheckOut(employeeId: string) {
     const isEmployee =
-      await this.employeeService.getEmployeeByIdWithCompany(employeeId);
+      await this.employeeService.getEmployeeByIdIncludeCompany(employeeId);
 
     if (!isEmployee) {
       throw new BadRequestException('Employee not found');
@@ -405,7 +406,7 @@ export class AttendanceService {
 
   async canEmployeeCheckIn(employeeId: string) {
     const isEmployee =
-      await this.employeeService.getEmployeeByIdWithCompany(employeeId);
+      await this.employeeService.getEmployeeByIdIncludeCompany(employeeId);
 
     if (!isEmployee) {
       throw new BadRequestException('Employee not found');
@@ -943,5 +944,143 @@ export class AttendanceService {
         absent_reason: dto.absent_reason ?? null,
       },
     });
+  }
+
+  async getAttendanceSummaryByEmployee(
+    employeeId: string,
+    query?: AttendanceSummaryByEmployeeQueryDto,
+  ) {
+    // pastikan employee exist & aktif
+    const employee = await this.prisma.employee.findFirst({
+      where: { employee_id: employeeId, deleted_at: null },
+      select: {
+        employee_id: true,
+        name: true,
+        email: true,
+        avatar_uri: true,
+      },
+    });
+
+    if (!employee) {
+      throw new BadRequestException('Employee not found');
+    }
+
+    // default: bulan & tahun sekarang (UTC)
+    const now = new Date();
+    const year = query?.year ?? now.getUTCFullYear();
+    const month = query?.month ?? now.getUTCMonth() + 1; // 1-12
+
+    // validasi sederhana
+    if (month < 1 || month > 12) {
+      throw new BadRequestException('Invalid month');
+    }
+
+    // range bulan (UTC, date-only)
+    const start = new Date(Date.UTC(year, month - 1, 1));
+    const endExclusive = new Date(Date.UTC(year, month, 1)); // bulan berikutnya
+
+    const attendances = await this.prisma.employeeAttendance.findMany({
+      where: {
+        employee_id: employeeId,
+        deleted_at: null,
+        attendance_date: {
+          gte: start,
+          lt: endExclusive,
+        },
+      },
+      select: {
+        attendance_date: true,
+        status: true,
+        is_late: true,
+        late_minutes: true,
+        total_work_hours: true,
+        check_in_time: true,
+        check_out_time: true,
+      },
+    });
+
+    // build list tanggal dalam bulan
+    const days: string[] = [];
+    for (
+      let d = new Date(start);
+      d < endExclusive;
+      d = new Date(
+        Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1),
+      )
+    ) {
+      days.push(d.toISOString().slice(0, 10)); // YYYY-MM-DD
+    }
+
+    // map attendance by date
+    const byDate = new Map<
+      string,
+      {
+        status: string;
+        is_late: boolean;
+        late_minutes: number | null;
+        check_in_time: Date | null;
+        check_out_time: Date | null;
+      }
+    >();
+
+    for (const a of attendances) {
+      if (!a.attendance_date) continue;
+      const key = a.attendance_date.toISOString().slice(0, 10);
+      byDate.set(key, {
+        status: a.status,
+        is_late: a.is_late,
+        late_minutes: a.late_minutes,
+        check_in_time: a.check_in_time,
+        check_out_time: a.check_out_time,
+      });
+    }
+
+    // init summary counter
+    const summary: Record<string, number> = {
+      PRESENT: 0,
+      ABSENT: 0,
+      LEAVE: 0,
+      SICK: 0,
+      '-': 0,
+    };
+
+    const attendance_histories = days.map((tanggal) => {
+      const record = byDate.get(tanggal);
+      const status = record?.status ?? '-';
+
+      summary[status] = (summary[status] ?? 0) + 1;
+
+      return {
+        tanggal,
+        status,
+        is_late: record?.is_late ?? false,
+        late_minutes: record?.late_minutes ?? 0,
+        check_in_time: record?.check_in_time
+          ? record.check_in_time.toISOString()
+          : null,
+        check_out_time: record?.check_out_time
+          ? record.check_out_time.toISOString()
+          : null,
+      };
+    });
+
+    return {
+      range: {
+        month,
+        year,
+        start_date: start.toISOString().slice(0, 10),
+        end_date: new Date(endExclusive.getTime() - 1)
+          .toISOString()
+          .slice(0, 10),
+      },
+      employee: {
+        employee_id: employee.employee_id,
+        name: employee.name,
+        email: employee.email,
+        avatar_uri: employee.avatar_uri,
+        attendance_histories,
+        summary,
+      },
+    };
   }
 }

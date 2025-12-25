@@ -176,7 +176,7 @@ export class EmployeeService {
     });
   }
 
-  async getEmployeeByIdWithCompany(employee_id: string) {
+  async getEmployeeByIdIncludeCompany(employee_id: string) {
     return await this.prisma.employee.findFirst({
       where: { employee_id, deleted_at: null },
       include: { company: true },

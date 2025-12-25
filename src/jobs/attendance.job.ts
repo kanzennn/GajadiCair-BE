@@ -9,17 +9,30 @@ export class AttendanceJobService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  // @Cron('5 0 * * *', { timeZone: 'Asia/Jakarta' })
   @Cron('*/10 * * * * *')
-  async handleAbsent() {
-    this.logger.log('Running auto-absent job (00:00 Jakarta)');
+  async handleAutoAbsent() {
+    this.logger.log('Running auto-absent job (Jakarta timezone)');
 
-    // 1️⃣ Tentukan tanggal kemarin (00:00)
-    const now = new Date();
-    const targetDate = new Date(now);
-    targetDate.setDate(targetDate.getDate() - 1);
-    targetDate.setHours(0, 0, 0, 0);
+    /**
+     * 1️⃣ Tentukan tanggal kemarin (UTC date-only)
+     * Cron dijalankan jam 00:05 WIB → kemarin sudah fix
+     */
+    const nowJakarta = new Date();
+    const targetDate = new Date(
+      Date.UTC(
+        nowJakarta.getUTCFullYear(),
+        nowJakarta.getUTCMonth(),
+        nowJakarta.getUTCDate() - 1,
+      ),
+    );
 
-    // 2️⃣ Ambil semua employee aktif
+    const dateStr = targetDate.toISOString().slice(0, 10);
+    this.logger.log(`Processing absent for date ${dateStr}`);
+
+    /**
+     * 2️⃣ Ambil semua employee aktif + company + working_days
+     */
     const employees = await this.prisma.employee.findMany({
       where: {
         deleted_at: null,
@@ -28,6 +41,21 @@ export class AttendanceJobService {
       },
       select: {
         employee_id: true,
+        company_id: true,
+        company: {
+          select: {
+            working_days: {
+              where: { deleted_at: null },
+            },
+            custom_holidays: {
+              where: {
+                deleted_at: null,
+                start_date: { lte: targetDate },
+                end_date: { gte: targetDate },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -36,34 +64,69 @@ export class AttendanceJobService {
       return;
     }
 
-    const employeeIds = employees.map((e) => e.employee_id);
+    /**
+     * 3️⃣ Helper: cek hari kerja
+     */
+    const dayOfWeek = targetDate.getUTCDay(); // 0=Sun ... 6=Sat
+    const dayMap = [
+      'sunday',
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+    ] as const;
 
-    // 3️⃣ Ambil attendance yang SUDAH ADA untuk tanggal kemarin
+    /**
+     * 4️⃣ Ambil attendance yang SUDAH ADA (apa pun statusnya)
+     */
     const existingAttendances = await this.prisma.employeeAttendance.findMany({
       where: {
         attendance_date: targetDate,
-        employee_id: { in: employeeIds },
         deleted_at: null,
       },
       select: {
         employee_id: true,
-        check_in_time: true,
       },
     });
 
     const existingSet = new Set(existingAttendances.map((a) => a.employee_id));
 
-    // 4️⃣ Employee yang BELUM punya record → create ABSENT
-    const toCreate = employeeIds
-      .filter((id) => !existingSet.has(id))
-      .map((id) => ({
-        employee_id: id,
-        attendance_date: targetDate,
+    /**
+     * 5️⃣ Tentukan siapa yang harus ABSENT
+     */
+    const toCreate: {
+      employee_id: string;
+      attendance_date: Date;
+      status: AttendanceStatus;
+      absent_reason: string;
+    }[] = [];
 
+    for (const emp of employees) {
+      // skip kalau sudah ada attendance
+      if (existingSet.has(emp.employee_id)) continue;
+
+      const workingDay = emp.company.working_days[0];
+      if (!workingDay) continue;
+
+      // ❌ bukan hari kerja
+      if (!workingDay[dayMap[dayOfWeek]]) continue;
+
+      // ❌ hari libur custom
+      if (emp.company.custom_holidays.length > 0) continue;
+
+      toCreate.push({
+        employee_id: emp.employee_id,
+        attendance_date: targetDate,
         status: AttendanceStatus.ABSENT,
         absent_reason: 'AUTO_ABSENT_NO_RECORD',
-      }));
+      });
+    }
 
+    /**
+     * 6️⃣ Insert ABSENT (idempotent)
+     */
     if (toCreate.length > 0) {
       await this.prisma.employeeAttendance.createMany({
         data: toCreate,
@@ -72,7 +135,7 @@ export class AttendanceJobService {
     }
 
     this.logger.log(
-      `Auto-absent completed for ${targetDate.toISOString().slice(0, 10)}, created ${toCreate.length} absent records.`,
+      `Auto-absent completed for ${dateStr}, created ${toCreate.length} ABSENT records`,
     );
   }
 }
