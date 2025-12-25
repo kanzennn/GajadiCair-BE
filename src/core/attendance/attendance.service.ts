@@ -261,12 +261,16 @@ export class AttendanceService {
       if (!existing)
         throw new BadRequestException('You have not checked in today');
 
-      const total_work_hours = this.calcEffectiveWorkedHours({
+      let total_work_hours = this.calcEffectiveWorkedHours({
         now: nowTime,
         checkIn: existing.check_in_time,
         isLate: existing.is_late,
         companyWorkStart: company.work_start_time,
       });
+
+      if (total_work_hours < 0) {
+        total_work_hours = 0;
+      }
 
       const minHours = company.minimum_hours_per_day ?? 0;
 

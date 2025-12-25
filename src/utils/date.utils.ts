@@ -100,3 +100,13 @@ export function parseIsoDateOrTodayUtc(dateStr?: string) {
   }
   return dateOnlyUtc(d);
 }
+
+export function parseTimeToMinutes(value: string): number | null {
+  // accept "HH:mm" or "HH:mm:ss"
+  const m = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(value);
+  if (!m) return null;
+
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  return hh * 60 + mm; // seconds ignored
+}

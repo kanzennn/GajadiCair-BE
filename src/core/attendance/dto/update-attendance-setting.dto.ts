@@ -10,8 +10,11 @@ import {
   Matches,
   Max,
   Min,
+  Validate,
   ValidateIf,
 } from 'class-validator';
+import { AttendanceTimeOrderValidator } from 'src/common/validators/attendance-time-order.validator';
+import { ToleranceWithinWindowValidator } from 'src/common/validators/tolerance-within-window.validator';
 
 export class UpdateAttendanceSettingDto {
   @IsOptional()
@@ -38,6 +41,10 @@ export class UpdateAttendanceSettingDto {
   @Matches(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, {
     message: 'work_start_time must be in HH:mm or HH:mm:ss format',
   })
+  // ✅ Rule #1: open < work <= close
+  @Validate(AttendanceTimeOrderValidator)
+  // ✅ Rule #2: tolerance < (close - work)
+  @Validate(ToleranceWithinWindowValidator)
   work_start_time?: string;
 
   @IsOptional()
@@ -63,7 +70,7 @@ export class UpdateAttendanceSettingDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100000) // 100km (sesuaikan)
+  @Max(100000)
   attendance_radius_meters?: number;
 
   // lat/lng wajib kalau location enabled = true
