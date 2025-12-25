@@ -32,6 +32,7 @@ export class PayrollService {
       select: {
         employee_id: true,
         name: true,
+        email: true,
         base_salary: true,
         attendances: {
           where: {
@@ -118,6 +119,7 @@ export class PayrollService {
     return {
       employee_id: employee.employee_id,
       name: employee.name,
+      email: employee.email,
       period: {
         start,
         end,

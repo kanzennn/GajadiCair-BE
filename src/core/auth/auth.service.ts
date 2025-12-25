@@ -140,7 +140,7 @@ export class AuthService {
         company = await this.prisma.company.create({
           data: {
             email,
-            name,
+            name: name ?? 'No Name',
             avatar_uri: null, // sementara
             company_identifier,
           },

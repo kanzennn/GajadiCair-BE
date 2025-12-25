@@ -3,8 +3,8 @@ import { EmployeeAttendance } from 'src/core/attendance/entities/employee-attend
 export class Employee {
   employee_id: string;
   company_id?: string;
-  email?: string;
-  name?: string;
+  email: string;
+  name: string;
   avatar_uri?: string | null;
   base_salary: number;
   is_active?: boolean;

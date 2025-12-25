@@ -21,7 +21,7 @@ model Company {
   company_id          String   @id @default(uuid())
   email       String
   company_identifier String
-  name        String?
+  name        String
   password    String?
   avatar_uri String?
 
