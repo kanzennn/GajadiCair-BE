@@ -5,6 +5,7 @@ import { BadRequestException } from 'src/common/exceptions/badRequest.exception'
 import { InternalServerErrorException } from 'src/common/exceptions/internalServerError.exception';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { HasFaceResponseDto } from './dto/has-face-response.dto';
+import { VerifyFaceResponseInterface } from './interfaces/verify-face-response.interfaces';
 
 @Injectable()
 export class FaceRecognitionService {
@@ -176,7 +177,7 @@ export class FaceRecognitionService {
         throw new BadRequestException('Face does not match');
       }
 
-      return res.data;
+      return res.data as VerifyFaceResponseInterface;
     } catch (err) {
       if (err instanceof AxiosError) {
         console.log(

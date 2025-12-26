@@ -13,7 +13,7 @@ import { CustomHolidayService } from './custom-holiday.service';
 import { CreateCustomHolidayDto } from './dto/create-custom-holiday.dto';
 import { UpdateCustomHolidayDto } from './dto/update-custom-holiday.dto';
 import { CompanyAuthGuard } from '../auth/guards/company.guard';
-import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
 import { successResponse } from 'src/utils/response.utils';
 
 @Controller({ path: 'company/custom-holiday', version: '1' })
@@ -23,7 +23,7 @@ export class CustomHolidayController {
 
   @Post()
   async create(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() createCustomHolidayDto: CreateCustomHolidayDto,
   ) {
     const data = await this.customHolidayService.createByCompany(
@@ -35,7 +35,7 @@ export class CustomHolidayController {
   }
 
   @Get()
-  async findAll(@Req() req: Request & { user: TokenPayloadDto }) {
+  async findAll(@Req() req: Request & { user: TokenPayloadInterface }) {
     const data = await this.customHolidayService.findAllByCompany(req.user.sub);
     return successResponse(data, 'Custom holidays fetched successfully');
   }
@@ -43,7 +43,7 @@ export class CustomHolidayController {
   @Get(':company_custom_holiday_id')
   async findOne(
     @Param('company_custom_holiday_id') company_custom_holiday_id: string,
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     const data = await this.customHolidayService.findOneByIdByCompany(
       req.user.sub,
@@ -57,7 +57,7 @@ export class CustomHolidayController {
   async update(
     @Param('company_custom_holiday_id') company_custom_holiday_id: string,
     @Body() updateCustomHolidayDto: UpdateCustomHolidayDto,
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     const updatedData = await this.customHolidayService.updateByCompany(
       req.user.sub,
@@ -71,7 +71,7 @@ export class CustomHolidayController {
   @Delete(':company_custom_holiday_id')
   async remove(
     @Param('company_custom_holiday_id') company_custom_holiday_id: string,
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     const deletedData = await this.customHolidayService.removeByCompany(
       req.user.sub,

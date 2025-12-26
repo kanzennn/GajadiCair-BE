@@ -11,7 +11,9 @@ describe('PayrollAllowanceRuleController', () => {
       providers: [PayrollAllowanceRuleService],
     }).compile();
 
-    controller = module.get<PayrollAllowanceRuleController>(PayrollAllowanceRuleController);
+    controller = module.get<PayrollAllowanceRuleController>(
+      PayrollAllowanceRuleController,
+    );
   });
 
   it('should be defined', () => {

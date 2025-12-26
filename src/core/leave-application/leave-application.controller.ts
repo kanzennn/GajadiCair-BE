@@ -13,7 +13,7 @@ import { LeaveApplicationService } from './leave-application.service';
 import { CreateLeaveApplicationDto } from './dto/create-leave-application.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
-import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
 import { convertFilename } from 'src/utils/convertString.utils';
 import { S3Service } from 'src/common/services/s3/s3.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
@@ -31,7 +31,7 @@ export class LeaveApplicationController {
   @Get('employee/leave-application')
   @UseGuards(EmployeeAuthGuard)
   async getEmployeeLeaveApplications(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     return successResponse(
       await this.leaveApplicationService.getEmployeeLeaveApplications(
@@ -46,7 +46,7 @@ export class LeaveApplicationController {
   @UseInterceptors(FileInterceptor('attachment'))
   async createApplication(
     @UploadedFile() file: Express.Multer.File,
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() createLeaveApplicationDto: CreateLeaveApplicationDto,
   ) {
     if (!file) {
@@ -75,7 +75,7 @@ export class LeaveApplicationController {
   @Get('company/leave-application')
   @UseGuards(CompanyAuthGuard)
   async getCompanyLeaveApplications(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     const data = await this.leaveApplicationService.getCompanyLeaveApplications(
       req.user.sub,
@@ -87,7 +87,7 @@ export class LeaveApplicationController {
   @Put('company/leave-application/status')
   @UseGuards(CompanyAuthGuard)
   async updateCompanyLeaveApplication(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: UpdateStatusLeaveApplicationDto,
   ) {
     const updatedData =

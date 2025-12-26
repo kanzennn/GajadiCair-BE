@@ -6,15 +6,11 @@ import { GoogleOauthService } from 'src/common/services/google/google-oauth.serv
 import { JwtModule } from '@nestjs/jwt';
 import { jwtConfig } from 'src/config/jwt.config';
 import { JwtCompanyStrategy } from './strategies/jwt-company.strategy';
-import { CompanyModule } from '../company/company.module';
-import { EmployeeModule } from '../employee/employee.module';
 import { JwtEmployeeStrategy } from './strategies/jwt-employee.strategy';
 import { S3Service } from 'src/common/services/s3/s3.service';
 
 @Module({
   imports: [
-    CompanyModule,
-    EmployeeModule,
     JwtModule.register({
       global: true,
       secret: jwtConfig.secret,

@@ -9,7 +9,9 @@ describe('PayrollAllowanceRuleService', () => {
       providers: [PayrollAllowanceRuleService],
     }).compile();
 
-    service = module.get<PayrollAllowanceRuleService>(PayrollAllowanceRuleService);
+    service = module.get<PayrollAllowanceRuleService>(
+      PayrollAllowanceRuleService,
+    );
   });
 
   it('should be defined', () => {

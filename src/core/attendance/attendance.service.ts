@@ -51,13 +51,33 @@ export class AttendanceService {
     const now = new Date();
     const nowMin = nowMinutesJakarta(now);
 
-    await this.faceRecognitionService.verifyFace(file, employeeId);
-
     return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const { company } = await this.findEmployeeCompanyForCheckIn(
         tx,
         employeeId,
       );
+
+      const sub = await this.subscriptionService.getSubscriptionStatus(
+        company.company_id,
+      );
+
+      this.assertGesturePolicyOrThrow({
+        recognizeWithGesture: company.recognize_with_gesture === true,
+        planLevel: sub.level_plan,
+        dto,
+      });
+
+      const recog = await this.faceRecognitionService.verifyFace(
+        file,
+        employeeId,
+      );
+
+      if (company.recognize_with_gesture === true) {
+        this.assertGestureMatchedOrThrow({
+          dto,
+          detected: recog.gestures_detected,
+        });
+      }
 
       this.assertAttendanceWindowOpen({
         nowMin,
@@ -132,6 +152,28 @@ export class AttendanceService {
         tx,
         employeeId,
       );
+
+      const sub = await this.subscriptionService.getSubscriptionStatus(
+        company.company_id,
+      );
+
+      this.assertGesturePolicyOrThrow({
+        recognizeWithGesture: company.recognize_with_gesture === true,
+        planLevel: sub.level_plan,
+        dto,
+      });
+
+      const recog = await this.faceRecognitionService.verifyFace(
+        file,
+        employeeId,
+      );
+
+      if (company.recognize_with_gesture === true) {
+        this.assertGestureMatchedOrThrow({
+          dto,
+          detected: recog.gestures_detected,
+        });
+      }
 
       await this.assertInRadiusIfEnabled(tx, {
         companyId: company.company_id,
@@ -857,6 +899,7 @@ export class AttendanceService {
         company: {
           select: {
             company_id: true,
+            recognize_with_gesture: true,
             attendance_location_enabled: true,
             attendance_radius_meters: true,
             work_start_time: true,
@@ -882,6 +925,7 @@ export class AttendanceService {
         company: {
           select: {
             company_id: true,
+            recognize_with_gesture: true,
             attendance_location_enabled: true,
             attendance_radius_meters: true,
             minimum_hours_per_day: true,
@@ -1077,5 +1121,111 @@ export class AttendanceService {
     }
 
     return (now.getTime() - workStartToday.getTime()) / 3600000;
+  }
+
+  private normalizeHand(h: string) {
+    const s = (h ?? '').trim().toLowerCase();
+    if (s === 'left') return 'Left';
+    if (s === 'right') return 'Right';
+    return null;
+  }
+
+  private assertGesturePolicyOrThrow(params: {
+    recognizeWithGesture: boolean;
+    planLevel: number;
+    dto: { gesture?: string[]; hand?: string[] };
+  }) {
+    const { recognizeWithGesture, planLevel, dto } = params;
+
+    const hasGesturePayload =
+      (dto.gesture && dto.gesture.length > 0) ||
+      (dto.hand && dto.hand.length > 0);
+
+    // setting company OFF -> user gak boleh kirim payload gesture/hand (biar jelas)
+    if (!recognizeWithGesture) {
+      if (hasGesturePayload) {
+        throw new BadRequestException(
+          'Gesture recognition is disabled by company setting',
+        );
+      }
+      return;
+    }
+
+    // setting ON, tapi user boleh aja gak kirim gesture/hand (optional)
+    if (!hasGesturePayload) return;
+
+    // kalau kirim salah satu, DTO kamu sudah maksa dua-duanya; ini tambahan pengaman
+    if (!dto.gesture || !dto.hand) {
+      throw new BadRequestException(
+        'gesture and hand must be provided together',
+      );
+    }
+
+    // subscription minimal level 1
+    if (planLevel < 1) {
+      throw new BadRequestException(
+        'Gesture recognition requires subscription plan Level 1 or above',
+      );
+    }
+
+    const maxHands = planLevel >= 2 ? 2 : 1;
+
+    if (dto.hand.length > maxHands || dto.gesture.length > maxHands) {
+      throw new BadRequestException(
+        `Your plan allows up to ${maxHands} hand gesture(s)`,
+      );
+    }
+
+    if (dto.hand.length !== dto.gesture.length) {
+      throw new BadRequestException(
+        'hand and gesture must have the same length',
+      );
+    }
+
+    // validasi hand harus Left/Right + unique kalau 2
+    const normalizedHands = dto.hand.map((h) => this.normalizeHand(h));
+    if (normalizedHands.some((h) => h === null)) {
+      throw new BadRequestException('hand must be Left or Right');
+    }
+
+    if (
+      normalizedHands.length === 2 &&
+      normalizedHands[0] === normalizedHands[1]
+    ) {
+      throw new BadRequestException(
+        'When sending 2 hands, they must be different',
+      );
+    }
+  }
+
+  private assertGestureMatchedOrThrow(params: {
+    dto: { gesture?: string[]; hand?: string[] };
+    detected: { hand: string; gesture: string }[] | undefined;
+  }) {
+    const { dto, detected } = params;
+
+    // kalau user gak kirim payload, skip
+    if (!dto.gesture || !dto.hand) return;
+
+    const expectedPairs = dto.hand.map((h, i) => ({
+      hand: this.normalizeHand(h)!, // sudah divalidasi sebelumnya
+      gesture: (dto.gesture![i] ?? '').trim(),
+    }));
+
+    const detectedSet = new Set(
+      (detected ?? []).map((g) => {
+        const hand = this.normalizeHand(g.hand);
+        const gesture = (g.gesture ?? '').trim();
+        return hand ? `${hand}:${gesture}` : '';
+      }),
+    );
+
+    for (const p of expectedPairs) {
+      if (!detectedSet.has(`${p.hand}:${p.gesture}`)) {
+        throw new BadRequestException(
+          `Gesture does not match. Expected ${p.hand} hand: ${p.gesture}`,
+        );
+      }
+    }
   }
 }

@@ -13,7 +13,7 @@ import { PayrollAllowanceRuleService } from './payroll-allowance-rule.service';
 import { CreatePayrollAllowanceRuleDto } from './dto/create-payroll-allowance-rule.dto';
 import { UpdatePayrollAllowanceRuleDto } from './dto/update-payroll-allowance-rule.dto';
 import { Request } from 'express';
-import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
 import { CompanyAuthGuard } from '../auth/guards/company.guard';
 import { successResponse } from 'src/utils/response.utils';
 
@@ -24,7 +24,7 @@ export class PayrollAllowanceRuleController {
 
   @Post()
   async create(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: CreatePayrollAllowanceRuleDto,
   ) {
     const data = await this.service.create(req.user.sub, dto);
@@ -32,14 +32,14 @@ export class PayrollAllowanceRuleController {
   }
 
   @Get()
-  async findAll(@Req() req: Request & { user: TokenPayloadDto }) {
+  async findAll(@Req() req: Request & { user: TokenPayloadInterface }) {
     const data = await this.service.findAllByCompany(req.user.sub);
     return successResponse(data, 'Payroll allowance rules retrieved');
   }
 
   @Get(':payroll_allowance_rule_id')
   async findOne(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Param('payroll_allowance_rule_id') payroll_allowance_rule_id: string,
   ) {
     const data = await this.service.findOneByCompany(
@@ -51,7 +51,7 @@ export class PayrollAllowanceRuleController {
 
   @Patch(':payroll_allowance_rule_id')
   async update(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Param('payroll_allowance_rule_id') payroll_allowance_rule_id: string,
     @Body() dto: UpdatePayrollAllowanceRuleDto,
   ) {
@@ -65,7 +65,7 @@ export class PayrollAllowanceRuleController {
 
   @Delete(':payroll_allowance_rule_id')
   async remove(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Param('payroll_allowance_rule_id') payroll_allowance_rule_id: string,
   ) {
     const data = await this.service.removeByCompany(

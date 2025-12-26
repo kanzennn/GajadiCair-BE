@@ -1,4 +1,4 @@
-export class TokenPayloadDto {
+export interface TokenPayloadInterface {
   sub: string;
   role: string;
   email: string;

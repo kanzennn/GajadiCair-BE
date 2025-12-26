@@ -17,7 +17,7 @@ import { BadRequestException } from 'src/common/exceptions/badRequest.exception'
 
 import { CompanyAuthGuard } from './guards/company.guard';
 import { EmployeeAuthGuard } from './guards/employee.guard';
-import { TokenPayloadDto } from './dto/token-payload.dto';
+import { TokenPayloadInterface } from './interfaces/token-payload.interface';
 
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { RegisterAuthDto } from './dto/register-auth.dto';
@@ -98,7 +98,7 @@ export class AuthControllerV1 {
   @HttpCode(200)
   @UseGuards(CompanyAuthGuard)
   async changeCompanyPassword(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: ChangePasswordDto,
   ) {
     await this.authService.changeCompanyPassword(
@@ -140,7 +140,7 @@ export class AuthControllerV1 {
   @HttpCode(200)
   @UseGuards(EmployeeAuthGuard) // ✅ FIX: sebelumnya CompanyAuthGuard
   async changeEmployeePassword(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: ChangePasswordDto,
   ) {
     await this.authService.changeEmployeePassword(

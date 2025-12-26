@@ -11,6 +11,7 @@ export class Company {
   level_plan: number; // 0: free, 1: basic, 2: pro
   plan_expiration?: Date | null;
 
+  recognize_with_gesture?: boolean | null;
   minimum_hours_per_day?: number | null;
   attendance_open_time?: Date | null;
   attendance_close_time?: Date | null;

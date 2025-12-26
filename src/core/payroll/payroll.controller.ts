@@ -1,5 +1,5 @@
 import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
-import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
 import { PayrollService } from './payroll.service';
 import { successResponse } from 'src/utils/response.utils';
 import { CompanyAuthGuard } from '../auth/guards/company.guard';
@@ -11,7 +11,7 @@ export class PayrollController {
   constructor(private readonly payrollService: PayrollService) {}
   @Get('company/payroll/summary')
   @UseGuards(CompanyAuthGuard)
-  async getCompanyPayroll(@Req() req: Request & { user: TokenPayloadDto }) {
+  async getCompanyPayroll(@Req() req: Request & { user: TokenPayloadInterface }) {
     const data = await this.payrollService.getCompanyPayrollSummary(
       req.user.sub,
     );
@@ -21,7 +21,7 @@ export class PayrollController {
 
   @Get('company/payroll/history')
   @UseGuards(CompanyAuthGuard)
-  async getEmployeePayroll(@Req() req: Request & { user: TokenPayloadDto }) {
+  async getEmployeePayroll(@Req() req: Request & { user: TokenPayloadInterface }) {
     const data = await this.payrollService.getAllPayrollLogByCompany(
       req.user.sub,
     );
@@ -31,7 +31,7 @@ export class PayrollController {
   @Get('company/payroll/history/:payroll_log_id')
   @UseGuards(CompanyAuthGuard)
   async getPayrollLogDetails(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Param('payroll_log_id') payroll_log_id: string,
   ) {
     const data = await this.payrollService.getOnePayrollLog(payroll_log_id);
@@ -45,14 +45,14 @@ export class PayrollController {
 
   @Get('employee/payroll/summary')
   @UseGuards(EmployeeAuthGuard)
-  async getMyPayroll(@Req() req: Request & { user: TokenPayloadDto }) {
+  async getMyPayroll(@Req() req: Request & { user: TokenPayloadInterface }) {
     const data = await this.payrollService.getEmployeePayroll(req.user.sub);
     return successResponse(data, 'Payroll summary retrieved');
   }
 
   @Get('employee/payroll/history')
   @UseGuards(EmployeeAuthGuard)
-  async getPayrollByEmployee(@Req() req: Request & { user: TokenPayloadDto }) {
+  async getPayrollByEmployee(@Req() req: Request & { user: TokenPayloadInterface }) {
     console.log(req.user.sub);
     const data = await this.payrollService.getAllPayrollLogByEmployee(
       req.user.sub,
@@ -63,7 +63,7 @@ export class PayrollController {
   @Get('employee/payroll/history/:payroll_log_id')
   @UseGuards(EmployeeAuthGuard)
   async getPayrollLogDetailsByEmployee(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Param('payroll_log_id') payroll_log_id: string,
   ) {
     const data = await this.payrollService.getOnePayrollLog(payroll_log_id);

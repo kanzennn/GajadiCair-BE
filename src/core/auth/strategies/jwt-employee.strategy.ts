@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { jwtConfig } from 'src/config/jwt.config';
-import { TokenPayloadDto } from '../dto/token-payload.dto';
+import { TokenPayloadInterface } from '../interfaces/token-payload.interface';
 
 @Injectable()
 export class JwtEmployeeStrategy extends PassportStrategy(
@@ -16,7 +16,7 @@ export class JwtEmployeeStrategy extends PassportStrategy(
     });
   }
 
-  async validate(payload: TokenPayloadDto) {
+  async validate(payload: TokenPayloadInterface) {
     if (payload.role !== 'employee') return await Promise.resolve(null);
     return await Promise.resolve(payload);
   }

@@ -11,10 +11,8 @@ import { BadRequestException } from 'src/common/exceptions/badRequest.exception'
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { RegisterAuthDto } from './dto/register-auth.dto';
 import { LoginEmployeeAuthDto } from './dto/login-employee-auth.dto';
-import { TokenPayloadDto } from './dto/token-payload.dto';
+import { TokenPayloadInterface } from './interfaces/token-payload.interface';
 
-import { CompanyService } from '../company/company.service';
-import { EmployeeService } from '../employee/employee.service';
 import { Company, Employee } from 'generated/prisma';
 
 type Role = 'company' | 'employee';
@@ -26,8 +24,6 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly googleOauthService: GoogleOauthService,
     private readonly jwtService: JwtService,
-    private readonly companyService: CompanyService,
-    private readonly employeeService: EmployeeService,
     private readonly s3Service: S3Service,
   ) {}
 
@@ -172,7 +168,10 @@ export class AuthService {
     old_password: string,
     new_password: string,
   ) {
-    const company = await this.companyService.getCompanyById(company_id);
+    const company = await this.prisma.company.findFirst({
+      where: { company_id, deleted_at: null },
+    });
+
     if (!company) throw new BadRequestException('Company not found');
 
     if (!company.password) {
@@ -237,7 +236,10 @@ export class AuthService {
     old_password: string,
     new_password: string,
   ) {
-    const employee = await this.employeeService.getEmployeeById(employee_id);
+    const employee = await this.prisma.employee.findFirst({
+      where: { employee_id, deleted_at: null },
+    });
+
     if (!employee) throw new BadRequestException('Employee not found');
 
     if (!employee.password) {
@@ -286,7 +288,7 @@ export class AuthService {
     return { access_token, refresh_token };
   }
 
-  private async signAccessToken(payload: TokenPayloadDto) {
+  private async signAccessToken(payload: TokenPayloadInterface) {
     return this.jwtService.signAsync({
       sub: payload.sub,
       email: payload.email,
@@ -297,10 +299,10 @@ export class AuthService {
 
   private async verifyRefreshToken(token: string, expectedRole: Role) {
     // Kalau JwtModule kamu sudah register secret global, ini cukup:
-    const payload: TokenPayloadDto = await this.jwtService.verifyAsync(token);
+    const payload: TokenPayloadInterface = await this.jwtService.verifyAsync(token);
 
     // Kalau kamu memang butuh manual secret:
-    // const payload = (await this.jwtService.verifyAsync(token, { secret: process.env.JWT_SECRET })) as TokenPayloadDto;
+    // const payload = (await this.jwtService.verifyAsync(token, { secret: process.env.JWT_SECRET })) as TokenPayloadInterface;
 
     if (payload.role !== expectedRole)
       throw new BadRequestException('Invalid refresh token');

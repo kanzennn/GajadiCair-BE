@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable } from '@nestjs/common';
 import { CreateSnapSubscriptionDto } from './dto/create-snap-subscription.dto';
-import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { MidtransService } from 'src/common/services/midtrans/midtrans.service';
 import { SnapDto } from 'src/common/services/midtrans/dto/snap.dto';
@@ -21,7 +21,10 @@ export class SubscriptionService {
     private readonly configService: ConfigService,
   ) {}
 
-  async createSnap(dto: CreateSnapSubscriptionDto, user: TokenPayloadDto) {
+  async createSnap(
+    dto: CreateSnapSubscriptionDto,
+    user: TokenPayloadInterface,
+  ) {
     const company = await this.prisma.company.findUnique({
       where: { company_id: user.sub },
       select: {

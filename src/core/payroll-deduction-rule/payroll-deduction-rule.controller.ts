@@ -13,7 +13,7 @@ import { PayrollDeductionRuleService } from './payroll-deduction-rule.service';
 import { CreatePayrollDeductionRuleDto } from './dto/create-payroll-deduction-rule.dto';
 import { UpdatePayrollDeductionRuleDto } from './dto/update-payroll-deduction-rule.dto';
 import { Request } from 'express';
-import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
 import { CompanyAuthGuard } from '../auth/guards/company.guard';
 import { successResponse } from 'src/utils/response.utils';
 
@@ -26,7 +26,7 @@ export class PayrollDeductionRuleController {
 
   @Post()
   async create(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: CreatePayrollDeductionRuleDto,
   ) {
     const data = await this.payrollDeductionRuleService.create(
@@ -38,7 +38,7 @@ export class PayrollDeductionRuleController {
   }
 
   @Get()
-  async findAll(@Req() req: Request & { user: TokenPayloadDto }) {
+  async findAll(@Req() req: Request & { user: TokenPayloadInterface }) {
     const data = await this.payrollDeductionRuleService.findAllByCompany(
       req.user.sub,
     );
@@ -48,7 +48,7 @@ export class PayrollDeductionRuleController {
 
   @Get(':payroll_deduction_rule_id')
   async findOne(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Param('payroll_deduction_rule_id') payroll_deduction_rule_id: string,
   ) {
     const data = await this.payrollDeductionRuleService.findOneByCompany(
@@ -61,7 +61,7 @@ export class PayrollDeductionRuleController {
 
   @Patch(':payroll_deduction_rule_id')
   async update(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Param('payroll_deduction_rule_id') payroll_deduction_rule_id: string,
     @Body() dto: UpdatePayrollDeductionRuleDto,
   ) {
@@ -76,7 +76,7 @@ export class PayrollDeductionRuleController {
 
   @Delete(':payroll_deduction_rule_id')
   async remove(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Param('payroll_deduction_rule_id') payroll_deduction_rule_id: string,
   ) {
     const data = await this.payrollDeductionRuleService.remove(

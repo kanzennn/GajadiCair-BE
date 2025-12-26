@@ -14,7 +14,7 @@ import { BadRequestException } from 'src/common/exceptions/badRequest.exception'
 import { successResponse } from 'src/utils/response.utils';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
-import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
 
 @Controller({ path: 'employee/face-recognition', version: '1' })
 export class FaceRecognitionController {
@@ -42,7 +42,7 @@ export class FaceRecognitionController {
   @UseInterceptors(FilesInterceptor('files', 50))
   async enrollFace(
     @UploadedFiles() files: Express.Multer.File[],
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     if (!files || files.length === 0) {
       throw new BadRequestException('No images uploaded');
@@ -59,7 +59,7 @@ export class FaceRecognitionController {
 
   @Delete('remove-face')
   @UseGuards(EmployeeAuthGuard)
-  async removeFace(@Req() req: Request & { user: TokenPayloadDto }) {
+  async removeFace(@Req() req: Request & { user: TokenPayloadInterface }) {
     const data = await this.faceRecognitionService.deleteFaceData(req.user.sub);
     return successResponse(data);
   }

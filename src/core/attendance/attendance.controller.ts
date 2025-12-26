@@ -18,7 +18,7 @@ import { AttendanceService } from './attendance.service';
 
 import { CompanyAuthGuard } from '../auth/guards/company.guard';
 import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
-import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
 
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { successResponse } from 'src/utils/response.utils';
@@ -42,7 +42,7 @@ export class AttendanceController {
   @UseInterceptors(FileInterceptor('file'))
   async checkInFace(
     @UploadedFile() file: Express.Multer.File,
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: CheckInDto,
   ) {
     if (!file) throw new BadRequestException('No image uploaded');
@@ -61,7 +61,7 @@ export class AttendanceController {
   @UseInterceptors(FileInterceptor('file'))
   async checkOutFace(
     @UploadedFile() file: Express.Multer.File,
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: CheckOutDto,
   ) {
     if (!file) throw new BadRequestException('No image uploaded');
@@ -78,7 +78,7 @@ export class AttendanceController {
   @Get('employee/attendance/histories')
   @UseGuards(EmployeeAuthGuard)
   async getAttendanceHistories(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     const data = await this.attendanceService.getAllAttendance(req.user.sub);
     return successResponse(data, 'Attendance histories retrieved successfully');
@@ -87,7 +87,7 @@ export class AttendanceController {
   @Get('employee/attendance/today-status')
   @UseGuards(EmployeeAuthGuard)
   async getTodayAttendanceStatus(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     const data = await this.attendanceService.getTodayAttendanceStatus(
       req.user.sub,
@@ -102,7 +102,7 @@ export class AttendanceController {
   @Get('employee/attendance/check-out-check')
   @UseGuards(EmployeeAuthGuard)
   async checkIfEmployeeCanCheckOut(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     const data = await this.attendanceService.canEmployeeCheckOut(req.user.sub);
 
@@ -115,7 +115,7 @@ export class AttendanceController {
   @Get('employee/attendance/check-in-check')
   @UseGuards(EmployeeAuthGuard)
   async checkIfEmployeeCanCheckIn(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     const data = await this.attendanceService.canEmployeeCheckIn(req.user.sub);
 
@@ -125,7 +125,7 @@ export class AttendanceController {
   @Get('employee/attendance/summary')
   @UseGuards(EmployeeAuthGuard)
   async getAttendanceSummaryByEmployee(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Query() query: AttendanceSummaryByEmployeeQueryDto,
   ) {
     const data = await this.attendanceService.getAttendanceSummaryByEmployee(
@@ -143,7 +143,9 @@ export class AttendanceController {
 
   @Get('company/attendance/setting')
   @UseGuards(CompanyAuthGuard)
-  async getAttendanceSetting(@Req() req: Request & { user: TokenPayloadDto }) {
+  async getAttendanceSetting(
+    @Req() req: Request & { user: TokenPayloadInterface },
+  ) {
     const data = await this.attendanceService.getAttendanceSetting(
       req.user.sub,
     );
@@ -153,7 +155,7 @@ export class AttendanceController {
   @Put('company/attendance/setting')
   @UseGuards(CompanyAuthGuard)
   async updateAttendanceSetting(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: UpdateAttendanceSettingDto,
   ) {
     const data = await this.attendanceService.updateAttendanceSetting(
@@ -167,7 +169,7 @@ export class AttendanceController {
   @Get('company/attendance/summary')
   @UseGuards(CompanyAuthGuard)
   async getAttendanceSummaryByCompany(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Query() query: AttendanceSummaryQueryDto,
   ) {
     const data = await this.attendanceService.getAttendanceSummaryByCompany(
@@ -184,7 +186,7 @@ export class AttendanceController {
   @Get('company/attendance')
   @UseGuards(CompanyAuthGuard)
   async getAttendanceByCompany(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Query() query: AttendanceByCompanyQueryDto,
   ) {
     const data = await this.attendanceService.getAttendanceByCompany(
@@ -201,7 +203,7 @@ export class AttendanceController {
   @Patch('company/attendance')
   @UseGuards(CompanyAuthGuard)
   async updateAttendanceByCompany(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: UpdateAttendanceByCompanyDto,
   ) {
     const data = await this.attendanceService.updateAttendanceByCompany(
