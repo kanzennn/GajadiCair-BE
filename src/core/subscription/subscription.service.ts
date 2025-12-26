@@ -17,10 +17,11 @@ import { CompanyService } from '../company/company.service';
 @Injectable()
 export class SubscriptionService {
   constructor(
-    private readonly midtransService: MidtransService,
-    private readonly prisma: PrismaService,
     @Inject(forwardRef(() => CompanyService))
     private readonly companyService: CompanyService,
+
+    private readonly midtransService: MidtransService,
+    private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {}
 

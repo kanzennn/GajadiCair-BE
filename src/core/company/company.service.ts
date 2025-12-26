@@ -10,9 +10,10 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 @Injectable()
 export class CompanyService {
   constructor(
-    private readonly prisma: PrismaService,
     @Inject(forwardRef(() => SubscriptionService))
     private readonly subscriptionsService: SubscriptionService,
+
+    private readonly prisma: PrismaService,
     private readonly employeeService: EmployeeService,
     private readonly s3: S3Service,
   ) {}
