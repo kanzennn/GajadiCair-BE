@@ -6,6 +6,8 @@ import type { Response } from 'express';
 import { AuthControllerV1 } from './auth.controller';
 import { AuthService } from './auth.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+import { LoginWithGoogleAuthDto } from './dto/login-with-google.dto';
+import { LoginAuthDto } from './dto/login-auth.dto';
 
 describe('AuthControllerV1', () => {
   let controller: AuthControllerV1;
@@ -50,7 +52,7 @@ describe('AuthControllerV1', () => {
       const res = makeRes();
 
       const result = await controller.loginCompany(
-        { email: 'a@a.com', password: 'x' } as any,
+        { email: 'a@a.com', password: 'x' } as LoginAuthDto,
         res,
       );
 
@@ -86,7 +88,7 @@ describe('AuthControllerV1', () => {
       const res = makeRes();
 
       const result = await controller.loginWithGoogleCompany(
-        { id_token: 'idToken' } as any,
+        { id_token: 'idToken' } as LoginWithGoogleAuthDto,
         res,
       );
 
