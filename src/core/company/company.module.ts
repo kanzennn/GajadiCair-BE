@@ -1,14 +1,18 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { CompanyService } from './company.service';
 import { CompanyController } from './company.controller';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
-import { BankService } from '../bank/bank.service';
 import { EmployeeModule } from '../employee/employee.module';
+import { SubscriptionModule } from '../subscription/subscription.module';
+import { S3Service } from 'src/common/services/s3/s3.service';
 
 @Module({
-  imports: [EmployeeModule],
+  imports: [
+    forwardRef(() => EmployeeModule),
+    forwardRef(() => SubscriptionModule),
+  ],
   controllers: [CompanyController],
-  providers: [CompanyService, BankService, PrismaService],
+  providers: [CompanyService, PrismaService, S3Service],
   exports: [CompanyService],
 })
 export class CompanyModule {}

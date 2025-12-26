@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { CreateSnapSubscriptionDto } from './dto/create-snap-subscription.dto';
 import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
-import { CompanyService } from '../company/company.service';
 import { MidtransService } from 'src/common/services/midtrans/midtrans.service';
 import { SnapDto } from 'src/common/services/midtrans/dto/snap.dto';
 import crypto from 'crypto';
@@ -13,12 +12,14 @@ import { ConfigService } from '@nestjs/config';
 import { addMonthsSafe } from 'src/utils/date.utils';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { daysLeftCeil } from '../../utils/date.utils';
+import { CompanyService } from '../company/company.service';
 
 @Injectable()
 export class SubscriptionService {
   constructor(
     private readonly midtransService: MidtransService,
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => CompanyService))
     private readonly companyService: CompanyService,
     private readonly configService: ConfigService,
   ) {}

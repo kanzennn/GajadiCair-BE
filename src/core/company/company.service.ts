@@ -1,11 +1,58 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
-import { UpdateProfileDto } from '../auth/dto/update-profile.dto';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+import { SubscriptionService } from '../subscription/subscription.service';
+import { EmployeeService } from '../employee/employee.service';
+import { convertFilename } from 'src/utils/convertString.utils';
+import { S3Service } from 'src/common/services/s3/s3.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class CompanyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => SubscriptionService))
+    private readonly subscriptionsService: SubscriptionService,
+    private readonly employeeService: EmployeeService,
+    private readonly s3: S3Service,
+  ) {}
+
+  async getAvailableSeats(company_id: string) {
+    const company = await this.prisma.company.findUnique({
+      where: { company_id, deleted_at: null },
+    });
+
+    const totalEmployee =
+      await this.employeeService.getCountEmployeesByCompany(company_id);
+
+    let seat_capacity = 0;
+
+    if (!company) {
+      throw new BadRequestException('Company not found');
+    }
+
+    const subscriptionStatus =
+      await this.subscriptionsService.getSubscriptionStatus(company_id);
+
+    if (subscriptionStatus.level_plan === 0) {
+      seat_capacity = 5;
+    } else if (subscriptionStatus.level_plan === 1) {
+      seat_capacity = 20;
+    } else if (subscriptionStatus.level_plan === 2) {
+      return {
+        seat_taken: totalEmployee,
+        seat_availability: null,
+        seat_capacity: null,
+      };
+    }
+
+    const availableSeats = seat_capacity - totalEmployee;
+    return {
+      seat_taken: totalEmployee,
+      seat_availability: availableSeats,
+      seat_capacity: seat_capacity,
+    };
+  }
 
   async getCompanyById(id: string) {
     return await this.prisma.company.findUnique({
@@ -13,13 +60,30 @@ export class CompanyService {
     });
   }
 
-  async updateCompanyProfile(company_id: string, dto: UpdateProfileDto) {
+  async updateCompanyProfile(
+    company_id: string,
+    dto: UpdateProfileDto,
+    file?: Express.Multer.File,
+  ) {
     const checkIsCompanyExist = await this.prisma.company.findUnique({
       where: { company_id },
     });
 
     if (!checkIsCompanyExist) {
       throw new BadRequestException('Company not found');
+    }
+
+    if (file) {
+      const key = `company/profile-picture/${Date.now()}-${convertFilename(file.originalname)}`;
+
+      const picture = await this.s3.uploadBuffer({
+        key,
+        buffer: file.buffer,
+        contentType: file.mimetype,
+        cacheControl: 'public, max-age=31536000',
+      });
+
+      dto.avatar_uri = picture.key;
     }
 
     const updateData = await this.prisma.company.update({

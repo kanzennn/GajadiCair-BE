@@ -1,6 +1,21 @@
 import { Injectable } from '@nestjs/common';
+
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
+import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+
 import { FaceRecognitionService } from '../face-recognition/face-recognition.service';
+import { EmployeeService } from '../employee/employee.service';
+import { CompanyService } from '../company/company.service';
+import { SubscriptionService } from '../subscription/subscription.service';
+
+import { CheckInDto } from './dto/check-in.dto';
+import { CheckOutDto } from './dto/check-out.dto';
+import { UpdateAttendanceSettingDto } from './dto/update-attendance-setting.dto';
+import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
+import { AttendanceByCompanyQueryDto } from './dto/attendance-by-company-query.dto';
+import { UpdateAttendanceByCompanyDto } from './dto/update-attendance-by-company';
+import { AttendanceSummaryByEmployeeQueryDto } from './dto/attendance-summary-by-employee-query.dto';
+
 import {
   addDaysUtc,
   dateOnlyUtc,
@@ -10,16 +25,10 @@ import {
   timeToMinutesFromDb,
   toYmd,
 } from 'src/utils/date.utils';
-import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
-import { CheckInDto } from './dto/check-in.dto';
-import { CheckOutDto } from './dto/check-out.dto';
-import { EmployeeService } from '../employee/employee.service';
-import { UpdateAttendanceSettingDto } from './dto/update-attendance-setting.dto';
-import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
-import { AttendanceByCompanyQueryDto } from './dto/attendance-by-company-query.dto';
-import { CompanyService } from '../company/company.service';
-import { UpdateAttendanceByCompanyDto } from './dto/update-attendance-by-company';
-import { AttendanceSummaryByEmployeeQueryDto } from './dto/attendance-summary-by-employee-query.dto';
+import { Prisma } from 'generated/prisma';
+
+type GeoCheckRow = { has_location: boolean; in_radius: boolean };
+type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'LEAVE' | 'SICK' | '-';
 
 @Injectable()
 export class AttendanceService {
@@ -28,96 +37,41 @@ export class AttendanceService {
     private readonly faceRecognitionService: FaceRecognitionService,
     private readonly employeeService: EmployeeService,
     private readonly companyService: CompanyService,
+    private readonly subscriptionService: SubscriptionService,
   ) {}
+
+  // ===================== CHECK-IN / CHECK-OUT =====================
 
   async checkInFace(
     file: Express.Multer.File,
     employeeId: string,
-    data: CheckInDto,
+    dto: CheckInDto,
   ) {
     const today = startOfDay();
-    const nowTime = new Date();
-    const nowMin = nowMinutesJakarta(nowTime);
+    const now = new Date();
+    const nowMin = nowMinutesJakarta(now);
 
     await this.faceRecognitionService.verifyFace(file, employeeId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const employee = await tx.employee.findUnique({
-        where: { employee_id: employeeId },
-        select: {
-          company_id: true,
-          company: {
-            select: {
-              company_id: true,
-              attendance_location_enabled: true,
-              attendance_radius_meters: true,
-              work_start_time: true,
-              attendance_open_time: true,
-              attendance_tolerance_minutes: true,
-              attendance_close_time: true,
-            },
-          },
-        },
+    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const { company } = await this.findEmployeeCompanyForCheckIn(
+        tx,
+        employeeId,
+      );
+
+      this.assertAttendanceWindowOpen({
+        nowMin,
+        openTime: company.attendance_open_time,
+        closeTime: company.attendance_close_time,
       });
 
-      if (!employee?.company)
-        throw new BadRequestException('Employee not found');
-
-      const company = employee.company;
-
-      if (company.attendance_open_time) {
-        const openMin = timeToMinutesFromDb(company.attendance_open_time);
-        if (nowMin < openMin)
-          throw new BadRequestException(
-            'Attendance is not open yet at this time',
-          );
-      }
-
-      if (company.attendance_close_time) {
-        const closeMin = timeToMinutesFromDb(company.attendance_close_time);
-        if (nowMin > closeMin)
-          throw new BadRequestException('Attendance is already closed');
-      }
-
-      if (company.attendance_location_enabled) {
-        if (!company.attendance_radius_meters) {
-          throw new BadRequestException('Attendance radius not configured');
-        }
-
-        // cek: lokasi company ada? + user dalam radius?
-        const rows = await tx.$queryRaw<
-          { has_location: boolean; in_radius: boolean }[]
-        >`
-        SELECT
-          (c.attendance_location IS NOT NULL) AS has_location,
-          ST_DWithin(
-            c.attendance_location,
-            ST_SetSRID(
-              ST_MakePoint(
-                ${data.longitude}::double precision,
-                ${data.latitude}::double precision
-              ),
-              4326
-            )::geography,
-            ${company.attendance_radius_meters}::double precision
-          ) AS in_radius
-        FROM companies c
-        WHERE c.company_id = ${company.company_id}
-        LIMIT 1
-      `;
-
-        const hasLocation = rows?.[0]?.has_location ?? false;
-        if (!hasLocation) {
-          throw new BadRequestException('Attendance location not configured');
-        }
-
-        const inRadius = rows?.[0]?.in_radius ?? false;
-        if (!inRadius) {
-          throw new BadRequestException(
-            'You are outside the attendance radius',
-          );
-        }
-      }
+      await this.assertInRadiusIfEnabled(tx, {
+        companyId: company.company_id,
+        enabled: company.attendance_location_enabled,
+        radiusMeters: company.attendance_radius_meters,
+        latitude: Number(dto.latitude),
+        longitude: Number(dto.longitude),
+      });
 
       const existing = await tx.employeeAttendance.findFirst({
         where: {
@@ -131,7 +85,7 @@ export class AttendanceService {
       if (existing) throw new BadRequestException('Already checked in today');
 
       const { lateMinutes, isLate } = this.calculateLateMinutes(
-        nowTime,
+        now,
         company.work_start_time,
         company.attendance_tolerance_minutes ?? 0,
       );
@@ -140,32 +94,22 @@ export class AttendanceService {
         data: {
           employee_id: employeeId,
           attendance_date: today,
-          check_in_time: nowTime,
+          check_in_time: now,
           late_minutes: lateMinutes,
           is_late: isLate,
         },
         select: { employee_attendance_id: true },
       });
 
-      // simpan check_in_location (kalau enabled, atau kalau kamu mau selalu simpan)
-      await tx.$executeRaw`
-      UPDATE employee_attendances
-      SET check_in_location =
-        ST_SetSRID(
-          ST_MakePoint(
-            ${data.longitude}::double precision,
-            ${data.latitude}::double precision
-          ),
-          4326
-        )::geography
-      WHERE employee_attendance_id = ${created.employee_attendance_id}
-    `;
+      await this.updateAttendanceLocation(tx, {
+        employeeAttendanceId: created.employee_attendance_id,
+        type: 'check_in',
+        latitude: Number(dto.latitude),
+        longitude: Number(dto.longitude),
+      });
 
       await tx.attendanceLog.create({
-        data: {
-          employee_id: employeeId,
-          log_type: 0,
-        },
+        data: { employee_id: employeeId, log_type: 0 },
       });
 
       return tx.employeeAttendance.findUnique({
@@ -177,76 +121,25 @@ export class AttendanceService {
   async checkOutFace(
     file: Express.Multer.File,
     employeeId: string,
-    data: CheckOutDto,
+    dto: CheckOutDto,
   ) {
-    const nowTime = new Date();
+    const now = new Date();
 
     await this.faceRecognitionService.verifyFace(file, employeeId);
 
     return this.prisma.$transaction(async (tx) => {
-      const employee = await tx.employee.findUnique({
-        where: { employee_id: employeeId },
-        select: {
-          company_id: true,
-          company: {
-            select: {
-              company_id: true,
-              attendance_location_enabled: true,
-              attendance_radius_meters: true,
-              minimum_hours_per_day: true,
-              work_start_time: true,
-            },
-          },
-        },
+      const { company } = await this.findEmployeeCompanyForCheckOut(
+        tx,
+        employeeId,
+      );
+
+      await this.assertInRadiusIfEnabled(tx, {
+        companyId: company.company_id,
+        enabled: company.attendance_location_enabled,
+        radiusMeters: company.attendance_radius_meters,
+        latitude: Number(dto.latitude),
+        longitude: Number(dto.longitude),
       });
-
-      if (!employee?.company)
-        throw new BadRequestException('Employee not found');
-
-      const company = employee.company;
-
-      if (company.attendance_location_enabled) {
-        if (!company.attendance_radius_meters) {
-          throw new BadRequestException('Attendance radius not configured');
-        }
-
-        // cek: lokasi company ada? + user dalam radius?
-        const rows = await tx.$queryRaw<
-          { has_location: boolean; in_radius: boolean }[]
-        >`
-        SELECT
-          (c.attendance_location IS NOT NULL) AS has_location,
-          ST_DWithin(
-            c.attendance_location,
-            ST_SetSRID(
-              ST_MakePoint(
-                ${data.longitude}::double precision,
-                ${data.latitude}::double precision
-              ),
-              4326
-            )::geography,
-            ${company.attendance_radius_meters}::double precision
-          ) AS in_radius
-        FROM companies c
-        WHERE c.company_id = ${company.company_id}
-        LIMIT 1
-      `;
-
-        const hasLocation = rows?.[0]?.has_location ?? false;
-        if (!hasLocation) {
-          throw new BadRequestException('Attendance location not configured');
-        }
-
-        const inRadius = rows?.[0]?.in_radius ?? false;
-        if (!inRadius) {
-          throw new BadRequestException(
-            'You are outside the attendance radius',
-          );
-        }
-      }
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
 
       const existing = await tx.employeeAttendance.findFirst({
         where: {
@@ -266,61 +159,48 @@ export class AttendanceService {
       if (!existing)
         throw new BadRequestException('You have not checked in today');
 
-      let total_work_hours = this.calcEffectiveWorkedHours({
-        now: nowTime,
-        checkIn: existing.check_in_time,
-        isLate: existing.is_late,
-        companyWorkStart: company.work_start_time,
-      });
-
-      if (total_work_hours < 0) {
-        total_work_hours = 0;
-      }
-
-      const minHours = company.minimum_hours_per_day ?? 0;
-
-      if (minHours > 0 && total_work_hours < minHours) {
-        throw new BadRequestException(
-          `You must work at least ${minHours} hours. You have worked ${total_work_hours.toFixed(2)} hours.`,
-        );
-      }
-
       if (existing.status !== 'PRESENT') {
         throw new BadRequestException(
           `Cannot checkout because status is ${existing.status}`,
         );
       }
 
+      let totalWorkHours = this.calcEffectiveWorkedHours({
+        now,
+        checkIn: existing.check_in_time,
+        isLate: existing.is_late,
+        companyWorkStart: company.work_start_time,
+      });
+
+      if (totalWorkHours < 0) totalWorkHours = 0;
+
+      const minHours = company.minimum_hours_per_day ?? 0;
+      if (minHours > 0 && totalWorkHours < minHours) {
+        throw new BadRequestException(
+          `You must work at least ${minHours} hours. You have worked ${totalWorkHours.toFixed(
+            2,
+          )} hours.`,
+        );
+      }
+
       const updated = await tx.employeeAttendance.update({
-        where: {
-          employee_attendance_id: existing.employee_attendance_id,
-        },
+        where: { employee_attendance_id: existing.employee_attendance_id },
         data: {
-          check_out_time: nowTime,
-          total_work_hours,
+          check_out_time: now,
+          total_work_hours: totalWorkHours,
         },
         select: { employee_attendance_id: true },
       });
 
-      // simpan check_in_location (kalau enabled, atau kalau kamu mau selalu simpan)
-      await tx.$executeRaw`
-      UPDATE employee_attendances
-      SET check_out_location =
-        ST_SetSRID(
-          ST_MakePoint(
-            ${data.longitude}::double precision,
-            ${data.latitude}::double precision
-          ),
-          4326
-        )::geography
-      WHERE employee_attendance_id = ${updated.employee_attendance_id}
-    `;
+      await this.updateAttendanceLocation(tx, {
+        employeeAttendanceId: updated.employee_attendance_id,
+        type: 'check_out',
+        latitude: Number(dto.latitude),
+        longitude: Number(dto.longitude),
+      });
 
       await tx.attendanceLog.create({
-        data: {
-          employee_id: employeeId,
-          log_type: 1,
-        },
+        data: { employee_id: employeeId, log_type: 1 },
       });
 
       return tx.employeeAttendance.findUnique({
@@ -329,44 +209,34 @@ export class AttendanceService {
     });
   }
 
+  // ===================== EMPLOYEE QUERIES =====================
+
   async getAllAttendance(employeeId: string) {
-    const attendance = await this.prisma.employeeAttendance.findMany({
-      where: {
-        employee_id: employeeId,
-        deleted_at: null,
-      },
+    return this.prisma.employeeAttendance.findMany({
+      where: { employee_id: employeeId, deleted_at: null },
       orderBy: { attendance_date: 'desc' },
     });
-
-    return attendance;
   }
 
   async getTodayAttendanceStatus(employeeId: string) {
     const today = startOfDay();
 
-    const attendance = await this.prisma.employeeAttendance.findFirst({
+    return this.prisma.employeeAttendance.findFirst({
       where: {
         employee_id: employeeId,
         attendance_date: today,
         deleted_at: null,
       },
     });
-
-    return attendance;
   }
 
   async canEmployeeCheckOut(employeeId: string) {
-    const isEmployee =
+    const employee =
       await this.employeeService.getEmployeeByIdIncludeCompany(employeeId);
+    if (!employee) throw new BadRequestException('Employee not found');
 
-    if (!isEmployee) {
-      throw new BadRequestException('Employee not found');
-    }
-
-    const company = isEmployee.company;
-
-    const nowTime = new Date();
-
+    const company = employee.company;
+    const now = new Date();
     const minHours = company.minimum_hours_per_day ?? 0;
 
     const attendance = await this.getTodayAttendanceStatus(employeeId);
@@ -389,44 +259,42 @@ export class AttendanceService {
       };
     }
 
-    const total_work_hours = this.calcEffectiveWorkedHours({
-      now: nowTime,
+    const workedHours = this.calcEffectiveWorkedHours({
+      now,
       checkIn: attendance.check_in_time,
       isLate: attendance.is_late,
       companyWorkStart: company.work_start_time,
     });
 
-    if (minHours > 0 && total_work_hours < minHours) {
+    if (minHours > 0 && workedHours < minHours) {
       return {
         can_check_out: false,
         min_hours: minHours,
-        worked_hours: total_work_hours,
-        reason: `Minimum work hours not met. Required: ${minHours} hours, Worked: ${total_work_hours.toFixed(2)} hours.`,
+        worked_hours: workedHours,
+        reason: `Minimum work hours not met. Required: ${minHours} hours, Worked: ${workedHours.toFixed(
+          2,
+        )} hours.`,
       };
     }
 
     return {
       can_check_out: true,
       in_hours: minHours,
-      worked_hours: total_work_hours,
+      worked_hours: workedHours,
       reason: null,
     };
   }
 
   async canEmployeeCheckIn(employeeId: string) {
-    const isEmployee =
+    const employee =
       await this.employeeService.getEmployeeByIdIncludeCompany(employeeId);
+    if (!employee) throw new BadRequestException('Employee not found');
 
-    if (!isEmployee) {
-      throw new BadRequestException('Employee not found');
-    }
+    const company = employee.company;
+    const now = new Date();
+    const nowMin = nowMinutesJakarta(now);
 
-    const company = isEmployee.company;
-
-    const nowTime = new Date();
-
-    const nowMin = nowMinutesJakarta(nowTime);
-
+    // window open/close
     if (company.attendance_open_time) {
       const openMin = timeToMinutesFromDb(company.attendance_open_time);
       if (nowMin < openMin) {
@@ -459,6 +327,7 @@ export class AttendanceService {
         attendance_date: startOfDay(),
         deleted_at: null,
       },
+      select: { employee_attendance_id: true },
     });
 
     if (isAlreadyCheckedIn) {
@@ -482,70 +351,7 @@ export class AttendanceService {
     };
   }
 
-  private calculateLateMinutes(
-    checkIn: Date,
-    workStart: Date | null,
-    toleranceMinutes = 0,
-  ): { lateMinutes: number; isLate: boolean } {
-    if (!workStart) {
-      return { lateMinutes: 0, isLate: false };
-    }
-
-    // Tempel jam kerja ke tanggal check-in (WIB-safe)
-    const workStartToday = new Date(checkIn);
-    workStartToday.setHours(workStart.getHours(), workStart.getMinutes(), 0, 0);
-
-    const diffMs = checkIn.getTime() - workStartToday.getTime();
-    const diffMinutes = Math.floor(diffMs / 60000);
-
-    const lateMinutes = Math.max(0, diffMinutes - toleranceMinutes);
-
-    return {
-      lateMinutes,
-      isLate: lateMinutes > 0,
-    };
-  }
-
-  private getWorkStartToday(
-    now: Date,
-    companyWorkStart: Date | null,
-  ): Date | null {
-    if (!companyWorkStart) return null;
-
-    const workStartToday = new Date(now);
-    workStartToday.setHours(
-      companyWorkStart.getHours(),
-      companyWorkStart.getMinutes(),
-      0,
-      0,
-    );
-    return workStartToday;
-  }
-
-  private calcEffectiveWorkedHours(params: {
-    now: Date;
-    checkIn: Date | null;
-    isLate: boolean;
-    companyWorkStart: Date | null;
-  }): number {
-    const { now, checkIn, isLate, companyWorkStart } = params;
-
-    // kalau telat → start dari check-in
-    if (isLate) {
-      if (!checkIn) return 0;
-      return (now.getTime() - checkIn.getTime()) / 3600000;
-    }
-
-    // kalau tidak telat → start dari work_start_time company (hari ini)
-    const workStartToday = this.getWorkStartToday(now, companyWorkStart);
-    if (!workStartToday) {
-      // fallback kalau company belum set work_start_time
-      if (!checkIn) return 0;
-      return (now.getTime() - checkIn.getTime()) / 3600000;
-    }
-
-    return (now.getTime() - workStartToday.getTime()) / 3600000;
-  }
+  // ===================== COMPANY SETTINGS =====================
 
   async getAttendanceSetting(companyId: string) {
     const setting = await this.prisma.company.findUnique({
@@ -556,30 +362,18 @@ export class AttendanceService {
         attendance_close_time: true,
         work_start_time: true,
         payroll_day_of_month: true,
+        recognize_with_gesture: true,
         attendance_tolerance_minutes: true,
         attendance_location_enabled: true,
         attendance_radius_meters: true,
       },
     });
 
-    const rows = await this.prisma.$queryRaw<
-      { latitude: number | null; longitude: number | null }[]
-    >`
-    SELECT
-      ST_Y(attendance_location::geometry) AS latitude,
-      ST_X(attendance_location::geometry) AS longitude
-    FROM companies
-    WHERE company_id = ${companyId}
-    LIMIT 1
-  `;
-
-    const location = rows[0]
-      ? { latitude: rows[0].latitude, longitude: rows[0].longitude }
-      : { latitude: null, longitude: null };
+    const location = await this.getCompanyAttendanceLocation(companyId);
 
     return {
       ...setting,
-      attendance_location: location, // { latitude, longitude }
+      attendance_location: location,
     };
   }
 
@@ -588,42 +382,31 @@ export class AttendanceService {
     dto: Partial<UpdateAttendanceSettingDto>,
   ) {
     return this.prisma.$transaction(async (tx) => {
-      // 1) Update fields yang support prisma
+      if (dto.recognize_with_gesture === true) {
+        const sub =
+          await this.subscriptionService.getSubscriptionStatus(companyId);
+        if (sub.level_plan < 1) {
+          throw new BadRequestException(
+            'Feature recognize with gesture is only available for Level 1 plan and above. Please upgrade your subscription.',
+          );
+        }
+      }
+
       await tx.company.update({
         where: { company_id: companyId },
         data: {
           minimum_hours_per_day: dto.minimum_hours_per_day,
           attendance_tolerance_minutes: dto.attendance_tolerance_minutes,
           payroll_day_of_month: dto.payroll_day_of_month,
+          recognize_with_gesture: dto.recognize_with_gesture,
           attendance_location_enabled: dto.attendance_location_enabled,
           attendance_radius_meters: dto.attendance_radius_meters,
         },
       });
 
-      // 2) Update TIME columns via raw
-      if (dto.attendance_open_time !== undefined) {
-        await tx.$executeRaw`
-        UPDATE companies
-        SET attendance_open_time = ${dto.attendance_open_time}::time
-        WHERE company_id = ${companyId}
-      `;
-      }
-      if (dto.attendance_close_time !== undefined) {
-        await tx.$executeRaw`
-        UPDATE companies
-        SET attendance_close_time = ${dto.attendance_close_time}::time
-        WHERE company_id = ${companyId}
-      `;
-      }
-      if (dto.work_start_time !== undefined) {
-        await tx.$executeRaw`
-        UPDATE companies
-        SET work_start_time = ${dto.work_start_time}::time
-        WHERE company_id = ${companyId}
-      `;
-      }
+      await this.updateCompanyTimeColumns(tx, companyId, dto);
 
-      // 3) ✅ Update LOCATION (geography) via raw
+      // location geography
       if (dto.attendance_location_enabled === true) {
         if (dto.latitude == null || dto.longitude == null) {
           throw new BadRequestException(
@@ -632,42 +415,27 @@ export class AttendanceService {
         }
 
         await tx.$executeRaw`
-        UPDATE companies
-        SET attendance_location =
-          ST_SetSRID(
-            ST_MakePoint(${dto.longitude}::double precision, ${dto.latitude}::double precision),
-            4326
-          )::geography
-        WHERE company_id = ${companyId}
-      `;
+          UPDATE companies
+          SET attendance_location =
+            ST_SetSRID(
+              ST_MakePoint(${dto.longitude}::double precision, ${dto.latitude}::double precision),
+              4326
+            )::geography
+          WHERE company_id = ${companyId}
+        `;
       }
 
-      // kalau explicit dimatikan → null-kan location
       if (dto.attendance_location_enabled === false) {
         await tx.$executeRaw`
-        UPDATE companies
-        SET attendance_location = NULL
-        WHERE company_id = ${companyId}
-      `;
+          UPDATE companies
+          SET attendance_location = NULL
+          WHERE company_id = ${companyId}
+        `;
       }
 
-      // 4) Read location + updated data (pakai tx, bukan this.prisma)
-      const rows = await tx.$queryRaw<
-        { latitude: number | null; longitude: number | null }[]
-      >`
-      SELECT
-        ST_Y(attendance_location::geometry) AS latitude,
-        ST_X(attendance_location::geometry) AS longitude
-      FROM companies
-      WHERE company_id = ${companyId}
-      LIMIT 1
-    `;
+      const location = await this.getCompanyAttendanceLocation(companyId, tx);
 
-      const location = rows[0]
-        ? { latitude: rows[0].latitude, longitude: rows[0].longitude }
-        : { latitude: null, longitude: null };
-
-      const updatedData = await tx.company.findUnique({
+      const updated = await tx.company.findUnique({
         where: { company_id: companyId },
         select: {
           minimum_hours_per_day: true,
@@ -681,22 +449,22 @@ export class AttendanceService {
       });
 
       return {
-        ...updatedData,
+        ...updated,
         attendance_location: location,
       };
     });
   }
 
+  // ===================== COMPANY REPORTS =====================
+
   async getAttendanceSummaryByCompany(
     companyId: string,
     query?: AttendanceSummaryQueryDto,
   ) {
-    // Default: 7 hari terakhir (hari ini inklusif)
-    const isCompanyExist = await this.companyService.getCompanyById(companyId);
-    if (!isCompanyExist) {
-      throw new BadRequestException('Company not found');
-    }
+    const company = await this.companyService.getCompanyById(companyId);
+    if (!company) throw new BadRequestException('Company not found');
 
+    // default 7 hari (inclusive)
     const today = dateOnlyUtc(new Date());
     const defaultStart = addDaysUtc(today, -6);
     const defaultEnd = today;
@@ -712,7 +480,6 @@ export class AttendanceService {
     if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
       throw new BadRequestException('Invalid start_date or end_date');
     }
-
     if (startDate > endDate) {
       throw new BadRequestException(
         'start_date cannot be greater than end_date',
@@ -749,7 +516,6 @@ export class AttendanceService {
       orderBy: { name: 'asc' },
     });
 
-    // list tanggal
     const days: string[] = [];
     for (let d = new Date(start); d < endExclusive; d = addDaysUtc(d, 1)) {
       days.push(toYmd(d));
@@ -781,8 +547,7 @@ export class AttendanceService {
           });
         }
 
-        // init counter
-        const summary: Record<string, number> = {
+        const summary: Record<AttendanceStatus, number> = {
           PRESENT: 0,
           ABSENT: 0,
           LEAVE: 0,
@@ -792,15 +557,9 @@ export class AttendanceService {
 
         const attendance_histories = days.map((tanggal) => {
           const record = byDate.get(tanggal);
+          const status = (record?.status ?? '-') as AttendanceStatus;
 
-          const status = record?.status ?? '-';
-
-          // hitung status
-          if (summary[status] !== undefined) {
-            summary[status]++;
-          } else {
-            summary[status] = 1;
-          }
+          summary[status] = (summary[status] ?? 0) + 1;
 
           return {
             tanggal,
@@ -837,7 +596,6 @@ export class AttendanceService {
 
     const day = parseIsoDateOrTodayUtc(query?.date);
 
-    // Ambil semua employee, dan attendance yg match tanggal itu
     const employees = await this.prisma.employee.findMany({
       where: {
         company_id: companyId,
@@ -855,10 +613,7 @@ export class AttendanceService {
         email: true,
         avatar_uri: true,
         attendances: {
-          where: {
-            deleted_at: null,
-            attendance_date: day, // karena @db.Date → match exact date
-          },
+          where: { deleted_at: null, attendance_date: day },
           select: {
             employee_attendance_id: true,
             attendance_date: true,
@@ -875,7 +630,6 @@ export class AttendanceService {
       orderBy: { name: 'asc' },
     });
 
-    // rapihin: attendances (array) → attendance (single | null)
     return {
       date: day.toISOString().slice(0, 10),
       employees: employees.map((e) => ({
@@ -895,37 +649,27 @@ export class AttendanceService {
     const company = await this.companyService.getCompanyById(companyId);
     if (!company) throw new BadRequestException('Company not found');
 
-    // ambil attendance + employee untuk validasi ownership
     const attendance = await this.prisma.employeeAttendance.findFirst({
       where: {
         employee_attendance_id: dto.employee_attendance_id,
         deleted_at: null,
-        employee: {
-          company_id: companyId,
-        },
+        employee: { company_id: companyId },
       },
-      include: {
-        employee: true,
-      },
+      include: { employee: true },
     });
 
-    if (!attendance) {
+    if (!attendance)
       throw new BadRequestException('Attendance not found for this company');
-    }
 
-    // parse time
     const checkIn = dto.check_in_time ? new Date(dto.check_in_time) : null;
-
     const checkOut = dto.check_out_time ? new Date(dto.check_out_time) : null;
 
-    // ❌ check_out < check_in
     if (checkIn && checkOut && checkOut < checkIn) {
       throw new BadRequestException(
         'check_out_time cannot be earlier than check_in_time',
       );
     }
 
-    // ❌ status ABSENT / LEAVE / SICK tidak boleh punya waktu masuk/keluar
     if (
       ['ABSENT', 'LEAVE', 'SICK'].includes(dto.status) &&
       (checkIn || checkOut)
@@ -935,16 +679,13 @@ export class AttendanceService {
       );
     }
 
-    // auto set is_late
     const isLate =
       dto.late_minutes !== undefined
         ? dto.late_minutes > 0
         : (dto.is_late ?? false);
 
     return this.prisma.employeeAttendance.update({
-      where: {
-        employee_attendance_id: dto.employee_attendance_id,
-      },
+      where: { employee_attendance_id: dto.employee_attendance_id },
       data: {
         status: dto.status,
         check_in_time: checkIn,
@@ -960,7 +701,6 @@ export class AttendanceService {
     employeeId: string,
     query?: AttendanceSummaryByEmployeeQueryDto,
   ) {
-    // pastikan employee exist & aktif
     const employee = await this.prisma.employee.findFirst({
       where: { employee_id: employeeId, deleted_at: null },
       select: {
@@ -971,32 +711,22 @@ export class AttendanceService {
       },
     });
 
-    if (!employee) {
-      throw new BadRequestException('Employee not found');
-    }
+    if (!employee) throw new BadRequestException('Employee not found');
 
-    // default: bulan & tahun sekarang (UTC)
     const now = new Date();
     const year = query?.year ?? now.getUTCFullYear();
-    const month = query?.month ?? now.getUTCMonth() + 1; // 1-12
+    const month = query?.month ?? now.getUTCMonth() + 1;
 
-    // validasi sederhana
-    if (month < 1 || month > 12) {
-      throw new BadRequestException('Invalid month');
-    }
+    if (month < 1 || month > 12) throw new BadRequestException('Invalid month');
 
-    // range bulan (UTC, date-only)
     const start = new Date(Date.UTC(year, month - 1, 1));
-    const endExclusive = new Date(Date.UTC(year, month, 1)); // bulan berikutnya
+    const endExclusive = new Date(Date.UTC(year, month, 1));
 
     const attendances = await this.prisma.employeeAttendance.findMany({
       where: {
         employee_id: employeeId,
         deleted_at: null,
-        attendance_date: {
-          gte: start,
-          lt: endExclusive,
-        },
+        attendance_date: { gte: start, lt: endExclusive },
       },
       select: {
         attendance_date: true,
@@ -1009,7 +739,6 @@ export class AttendanceService {
       },
     });
 
-    // build list tanggal dalam bulan
     const days: string[] = [];
     for (
       let d = new Date(start);
@@ -1018,10 +747,9 @@ export class AttendanceService {
         Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1),
       )
     ) {
-      days.push(d.toISOString().slice(0, 10)); // YYYY-MM-DD
+      days.push(d.toISOString().slice(0, 10));
     }
 
-    // map attendance by date
     const byDate = new Map<
       string,
       {
@@ -1045,8 +773,7 @@ export class AttendanceService {
       });
     }
 
-    // init summary counter
-    const summary: Record<string, number> = {
+    const summary: Record<AttendanceStatus, number> = {
       PRESENT: 0,
       ABSENT: 0,
       LEAVE: 0,
@@ -1056,7 +783,7 @@ export class AttendanceService {
 
     const attendance_histories = days.map((tanggal) => {
       const record = byDate.get(tanggal);
-      const status = record?.status ?? '-';
+      const status = (record?.status ?? '-') as AttendanceStatus;
 
       summary[status] = (summary[status] ?? 0) + 1;
 
@@ -1092,5 +819,263 @@ export class AttendanceService {
         summary,
       },
     };
+  }
+
+  // ===================== PRIVATE HELPERS =====================
+
+  private assertAttendanceWindowOpen(params: {
+    nowMin: number;
+    openTime: Date | null;
+    closeTime: Date | null;
+  }) {
+    const { nowMin, openTime, closeTime } = params;
+
+    if (openTime) {
+      const openMin = timeToMinutesFromDb(openTime);
+      if (nowMin < openMin) {
+        throw new BadRequestException(
+          'Attendance is not open yet at this time',
+        );
+      }
+    }
+
+    if (closeTime) {
+      const closeMin = timeToMinutesFromDb(closeTime);
+      if (nowMin > closeMin) {
+        throw new BadRequestException('Attendance is already closed');
+      }
+    }
+  }
+
+  private async findEmployeeCompanyForCheckIn(
+    tx: Prisma.TransactionClient,
+    employeeId: string,
+  ) {
+    const employee = await tx.employee.findUnique({
+      where: { employee_id: employeeId },
+      select: {
+        company: {
+          select: {
+            company_id: true,
+            attendance_location_enabled: true,
+            attendance_radius_meters: true,
+            work_start_time: true,
+            attendance_open_time: true,
+            attendance_tolerance_minutes: true,
+            attendance_close_time: true,
+          },
+        },
+      },
+    });
+
+    if (!employee?.company) throw new BadRequestException('Employee not found');
+    return { company: employee.company };
+  }
+
+  private async findEmployeeCompanyForCheckOut(
+    tx: Prisma.TransactionClient,
+    employeeId: string,
+  ) {
+    const employee = await tx.employee.findUnique({
+      where: { employee_id: employeeId },
+      select: {
+        company: {
+          select: {
+            company_id: true,
+            attendance_location_enabled: true,
+            attendance_radius_meters: true,
+            minimum_hours_per_day: true,
+            work_start_time: true,
+          },
+        },
+      },
+    });
+
+    if (!employee?.company) throw new BadRequestException('Employee not found');
+    return { company: employee.company };
+  }
+
+  private async assertInRadiusIfEnabled(
+    tx: Prisma.TransactionClient,
+    params: {
+      companyId: string;
+      enabled: boolean;
+      radiusMeters: number | null;
+      latitude: number;
+      longitude: number;
+    },
+  ) {
+    const { companyId, enabled, radiusMeters, latitude, longitude } = params;
+
+    if (!enabled) return;
+
+    if (!radiusMeters) {
+      throw new BadRequestException('Attendance radius not configured');
+    }
+
+    const rows = await tx.$queryRaw<GeoCheckRow[]>`
+      SELECT
+        (c.attendance_location IS NOT NULL) AS has_location,
+        ST_DWithin(
+          c.attendance_location,
+          ST_SetSRID(
+            ST_MakePoint(
+              ${longitude}::double precision,
+              ${latitude}::double precision
+            ),
+            4326
+          )::geography,
+          ${radiusMeters}::double precision
+        ) AS in_radius
+      FROM companies c
+      WHERE c.company_id = ${companyId}
+      LIMIT 1
+    `;
+
+    const hasLocation = rows?.[0]?.has_location ?? false;
+    if (!hasLocation)
+      throw new BadRequestException('Attendance location not configured');
+
+    const inRadius = rows?.[0]?.in_radius ?? false;
+    if (!inRadius)
+      throw new BadRequestException('You are outside the attendance radius');
+  }
+
+  private async updateAttendanceLocation(
+    tx: Prisma.TransactionClient,
+    params: {
+      employeeAttendanceId: string;
+      type: 'check_in' | 'check_out';
+      latitude: number;
+      longitude: number;
+    },
+  ) {
+    const { employeeAttendanceId, type, latitude, longitude } = params;
+
+    const column =
+      type === 'check_in' ? 'check_in_location' : 'check_out_location';
+
+    await tx.$executeRawUnsafe(
+      `
+      UPDATE employee_attendances
+      SET ${column} =
+        ST_SetSRID(
+          ST_MakePoint($1::double precision, $2::double precision),
+          4326
+        )::geography
+      WHERE employee_attendance_id = $3
+    `,
+      longitude,
+      latitude,
+      employeeAttendanceId,
+    );
+  }
+
+  private async updateCompanyTimeColumns(
+    tx: Prisma.TransactionClient,
+    companyId: string,
+    dto: Partial<UpdateAttendanceSettingDto>,
+  ) {
+    if (dto.attendance_open_time !== undefined) {
+      await tx.$executeRaw`
+        UPDATE companies
+        SET attendance_open_time = ${dto.attendance_open_time}::time
+        WHERE company_id = ${companyId}
+      `;
+    }
+
+    if (dto.attendance_close_time !== undefined) {
+      await tx.$executeRaw`
+        UPDATE companies
+        SET attendance_close_time = ${dto.attendance_close_time}::time
+        WHERE company_id = ${companyId}
+      `;
+    }
+
+    if (dto.work_start_time !== undefined) {
+      await tx.$executeRaw`
+        UPDATE companies
+        SET work_start_time = ${dto.work_start_time}::time
+        WHERE company_id = ${companyId}
+      `;
+    }
+  }
+
+  private async getCompanyAttendanceLocation(
+    companyId: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const client = tx ?? this.prisma;
+
+    const rows = await client.$queryRaw<
+      { latitude: number | null; longitude: number | null }[]
+    >`
+      SELECT
+        ST_Y(attendance_location::geometry) AS latitude,
+        ST_X(attendance_location::geometry) AS longitude
+      FROM companies
+      WHERE company_id = ${companyId}
+      LIMIT 1
+    `;
+
+    return rows?.[0]
+      ? { latitude: rows[0].latitude, longitude: rows[0].longitude }
+      : { latitude: null, longitude: null };
+  }
+
+  private calculateLateMinutes(
+    checkIn: Date,
+    workStart: Date | null,
+    toleranceMinutes = 0,
+  ): { lateMinutes: number; isLate: boolean } {
+    if (!workStart) return { lateMinutes: 0, isLate: false };
+
+    const workStartToday = new Date(checkIn);
+    workStartToday.setHours(workStart.getHours(), workStart.getMinutes(), 0, 0);
+
+    const diffMs = checkIn.getTime() - workStartToday.getTime();
+    const diffMinutes = Math.floor(diffMs / 60000);
+    const lateMinutes = Math.max(0, diffMinutes - toleranceMinutes);
+
+    return { lateMinutes, isLate: lateMinutes > 0 };
+  }
+
+  private getWorkStartToday(
+    now: Date,
+    companyWorkStart: Date | null,
+  ): Date | null {
+    if (!companyWorkStart) return null;
+
+    const workStartToday = new Date(now);
+    workStartToday.setHours(
+      companyWorkStart.getHours(),
+      companyWorkStart.getMinutes(),
+      0,
+      0,
+    );
+
+    return workStartToday;
+  }
+
+  private calcEffectiveWorkedHours(params: {
+    now: Date;
+    checkIn: Date | null;
+    isLate: boolean;
+    companyWorkStart: Date | null;
+  }): number {
+    const { now, checkIn, isLate, companyWorkStart } = params;
+
+    if (isLate) {
+      if (!checkIn) return 0;
+      return (now.getTime() - checkIn.getTime()) / 3600000;
+    }
+
+    const workStartToday = this.getWorkStartToday(now, companyWorkStart);
+    if (!workStartToday) {
+      if (!checkIn) return 0;
+      return (now.getTime() - checkIn.getTime()) / 3600000;
+    }
+
+    return (now.getTime() - workStartToday.getTime()) / 3600000;
   }
 }

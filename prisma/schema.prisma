@@ -43,6 +43,8 @@ model Company {
   attendance_location      Unsupported("geography")?
   attendance_radius_meters      Int? 
 
+  recognize_with_gesture     Boolean     @default(false)
+
   last_login        DateTime?
 
   created_at  DateTime @default(now())

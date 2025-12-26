@@ -6,5 +6,6 @@ import { PrismaService } from 'src/common/services/prisma/prisma.service';
 @Module({
   controllers: [FaceRecognitionController],
   providers: [FaceRecognitionService, PrismaService],
+  exports: [FaceRecognitionService],
 })
 export class FaceRecognitionModule {}

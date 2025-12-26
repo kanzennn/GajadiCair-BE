@@ -2,18 +2,20 @@ import { Module } from '@nestjs/common';
 import { AttendanceService } from './attendance.service';
 import { AttendanceController } from './attendance.controller';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
-import { FaceRecognitionService } from '../face-recognition/face-recognition.service';
+
 import { EmployeeModule } from '../employee/employee.module';
-import { CompanyService } from '../company/company.service';
+import { CompanyModule } from '../company/company.module';
+import { SubscriptionModule } from '../subscription/subscription.module';
+import { FaceRecognitionModule } from '../face-recognition/face-recognition.module';
 
 @Module({
-  controllers: [AttendanceController],
-  providers: [
-    AttendanceService,
-    PrismaService,
-    FaceRecognitionService,
-    CompanyService,
+  imports: [
+    EmployeeModule,
+    CompanyModule,
+    SubscriptionModule,
+    FaceRecognitionModule, // ⬅️ INI YANG KURANG
   ],
-  imports: [EmployeeModule],
+  controllers: [AttendanceController],
+  providers: [AttendanceService, PrismaService],
 })
 export class AttendanceModule {}

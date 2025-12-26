@@ -63,6 +63,10 @@ export class UpdateAttendanceSettingDto {
 
   @IsOptional()
   @IsBoolean()
+  recognize_with_gesture?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
   attendance_location_enabled?: boolean;
 
   // radius wajib kalau location enabled = true

@@ -294,4 +294,31 @@ export class FaceRecognitionService {
       throw new BadRequestException('Failed to delete face data');
     }
   }
+
+  async getGestureList() {
+    try {
+      const res = await axios.get(`${this.pythonUrl}/allowed-gestures`);
+
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+      return res.data;
+    } catch (err) {
+      if (err instanceof AxiosError) {
+        console.log(
+          'Python get-gesture-list error:',
+          err.response?.data || err.message,
+        );
+
+        throw new InternalServerErrorException(
+          'Internal server error during fetching gesture list',
+        );
+      }
+
+      console.log('Unknown error get-gesture-list:', err);
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+
+      throw new BadRequestException('Failed to get gesture list');
+    }
+  }
 }

@@ -1,26 +1,46 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
-import { CreateEmployeeDto } from '../company/dto/create-employee.dto';
-import { UpdateEmployeeDto } from '../company/dto/update-employee.dto';
 import { hash } from 'argon2';
 import { CustomMailerService } from 'src/common/services/mailer/mailer.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
-import { UpdateProfileEmployeeDto } from '../auth/dto/update-profile-employee.dto';
+import { UpdateProfileEmployeeDto } from './dto/update-profile-employee.dto';
+import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { CreateEmployeeDto } from './dto/create-employee.dto';
+import { CompanyService } from '../company/company.service';
+import { convertFilename } from 'src/utils/convertString.utils';
+import { S3Service } from 'src/common/services/s3/s3.service';
 
 @Injectable()
 export class EmployeeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailerService: CustomMailerService,
+    @Inject(forwardRef(() => CompanyService))
+    private readonly companyService: CompanyService,
+    private readonly s3: S3Service,
   ) {}
 
   async updateEmployeeProfile(
     employee_id: string,
     updateData: UpdateProfileEmployeeDto,
+    file: Express.Multer.File,
   ) {
     const checkIsEmployeeExist = await this.getEmployeeById(employee_id);
     if (!checkIsEmployeeExist) {
       throw new BadRequestException('Employee not found');
+    }
+
+    if (file) {
+      const key = `employee/profile-picture/${Date.now()}-${convertFilename(file.originalname)}`;
+
+      const picture = await this.s3.uploadBuffer({
+        key,
+        buffer: file.buffer,
+        contentType: file.mimetype,
+        cacheControl: 'public, max-age=31536000',
+      });
+
+      updateData.avatar_uri = picture.key;
     }
 
     const updatedData = await this.prisma.employee.update({
@@ -35,6 +55,14 @@ export class EmployeeService {
     company_id: string,
     createEmployeeDto: CreateEmployeeDto,
   ) {
+    const { seat_availability } =
+      await this.companyService.getAvailableSeats(company_id);
+    if (seat_availability !== null && seat_availability <= 0) {
+      throw new BadRequestException(
+        'Seat capacity exceeded. Please upgrade your subscription plan.',
+      );
+    }
+
     const isUsernameExist = await this.getEmployeeByUsernameByCompany(
       createEmployeeDto.username,
       company_id,
@@ -101,6 +129,12 @@ export class EmployeeService {
         created_at: true,
         updated_at: true,
       },
+    });
+  }
+
+  async getCountEmployeesByCompany(company_id: string) {
+    return await this.prisma.employee.count({
+      where: { company_id, deleted_at: null },
     });
   }
 

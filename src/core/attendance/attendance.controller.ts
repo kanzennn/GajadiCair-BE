@@ -1,24 +1,30 @@
 import {
-  Controller,
-  Post,
   Body,
-  UseGuards,
-  Req,
-  UseInterceptors,
-  UploadedFile,
+  Controller,
   Get,
+  Patch,
+  Post,
   Put,
   Query,
-  Patch,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+
 import { AttendanceService } from './attendance.service';
+
+import { CompanyAuthGuard } from '../auth/guards/company.guard';
 import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
 import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
-import { FileInterceptor } from '@nestjs/platform-express';
+
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
-import { CheckInDto } from './dto/check-in.dto';
 import { successResponse } from 'src/utils/response.utils';
-import { CompanyAuthGuard } from '../auth/guards/company.guard';
+
+import { CheckInDto } from './dto/check-in.dto';
+import { CheckOutDto } from './dto/check-out.dto';
 import { UpdateAttendanceSettingDto } from './dto/update-attendance-setting.dto';
 import { AttendanceSummaryQueryDto } from './dto/attendance-summary-query.dto';
 import { AttendanceByCompanyQueryDto } from './dto/attendance-by-company-query.dto';
@@ -29,6 +35,8 @@ import { AttendanceSummaryByEmployeeQueryDto } from './dto/attendance-summary-by
 export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
+  // ===================== EMPLOYEE =====================
+
   @Post('employee/attendance/check-in-face')
   @UseGuards(EmployeeAuthGuard)
   @UseInterceptors(FileInterceptor('file'))
@@ -37,9 +45,7 @@ export class AttendanceController {
     @Req() req: Request & { user: TokenPayloadDto },
     @Body() dto: CheckInDto,
   ) {
-    if (!file) {
-      throw new BadRequestException('No image uploaded');
-    }
+    if (!file) throw new BadRequestException('No image uploaded');
 
     const data = await this.attendanceService.checkInFace(
       file,
@@ -56,11 +62,9 @@ export class AttendanceController {
   async checkOutFace(
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request & { user: TokenPayloadDto },
-    @Body() dto: CheckInDto,
+    @Body() dto: CheckOutDto,
   ) {
-    if (!file) {
-      throw new BadRequestException('No image uploaded');
-    }
+    if (!file) throw new BadRequestException('No image uploaded');
 
     const data = await this.attendanceService.checkOutFace(
       file,
@@ -77,7 +81,6 @@ export class AttendanceController {
     @Req() req: Request & { user: TokenPayloadDto },
   ) {
     const data = await this.attendanceService.getAllAttendance(req.user.sub);
-
     return successResponse(data, 'Attendance histories retrieved successfully');
   }
 
@@ -89,6 +92,7 @@ export class AttendanceController {
     const data = await this.attendanceService.getTodayAttendanceStatus(
       req.user.sub,
     );
+
     return successResponse(
       data,
       'Today attendance status retrieved successfully',
@@ -101,6 +105,7 @@ export class AttendanceController {
     @Req() req: Request & { user: TokenPayloadDto },
   ) {
     const data = await this.attendanceService.canEmployeeCheckOut(req.user.sub);
+
     return successResponse(
       data,
       'Check-out eligibility retrieved successfully',
@@ -113,8 +118,28 @@ export class AttendanceController {
     @Req() req: Request & { user: TokenPayloadDto },
   ) {
     const data = await this.attendanceService.canEmployeeCheckIn(req.user.sub);
+
     return successResponse(data, 'Check-in eligibility retrieved successfully');
   }
+
+  @Get('employee/attendance/summary')
+  @UseGuards(EmployeeAuthGuard)
+  async getAttendanceSummaryByEmployee(
+    @Req() req: Request & { user: TokenPayloadDto },
+    @Query() query: AttendanceSummaryByEmployeeQueryDto,
+  ) {
+    const data = await this.attendanceService.getAttendanceSummaryByEmployee(
+      req.user.sub,
+      query,
+    );
+
+    return successResponse(
+      data,
+      'Employee attendance summary retrieved successfully',
+    );
+  }
+
+  // ===================== COMPANY =====================
 
   @Get('company/attendance/setting')
   @UseGuards(CompanyAuthGuard)
@@ -135,12 +160,13 @@ export class AttendanceController {
       req.user.sub,
       dto,
     );
+
     return successResponse(data, 'Attendance setting retrieved successfully');
   }
 
-  @Get('/company/attendance/summary')
+  @Get('company/attendance/summary')
   @UseGuards(CompanyAuthGuard)
-  async getAttendanceSumaryByCompany(
+  async getAttendanceSummaryByCompany(
     @Req() req: Request & { user: TokenPayloadDto },
     @Query() query: AttendanceSummaryQueryDto,
   ) {
@@ -148,13 +174,14 @@ export class AttendanceController {
       req.user.sub,
       query,
     );
+
     return successResponse(
       data,
       'Company attendance records retrieved successfully',
     );
   }
 
-  @Get('/company/attendance')
+  @Get('company/attendance')
   @UseGuards(CompanyAuthGuard)
   async getAttendanceByCompany(
     @Req() req: Request & { user: TokenPayloadDto },
@@ -171,7 +198,7 @@ export class AttendanceController {
     );
   }
 
-  @Patch('/company/attendance')
+  @Patch('company/attendance')
   @UseGuards(CompanyAuthGuard)
   async updateAttendanceByCompany(
     @Req() req: Request & { user: TokenPayloadDto },
@@ -185,22 +212,6 @@ export class AttendanceController {
     return successResponse(
       data,
       'Company attendance record updated successfully',
-    );
-  }
-
-  @Get('/employee/attendance/summary')
-  @UseGuards(EmployeeAuthGuard)
-  async getAttendanceSummaryByEmployee(
-    @Req() req: Request & { user: TokenPayloadDto },
-    @Query() query: AttendanceSummaryByEmployeeQueryDto,
-  ) {
-    const data = await this.attendanceService.getAttendanceSummaryByEmployee(
-      req.user.sub,
-      query,
-    );
-    return successResponse(
-      data,
-      'Employee attendance summary retrieved successfully',
     );
   }
 }
