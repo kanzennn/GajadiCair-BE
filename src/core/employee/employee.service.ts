@@ -1,4 +1,4 @@
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { hash } from 'argon2';
 import { CustomMailerService } from 'src/common/services/mailer/mailer.service';
@@ -15,7 +15,6 @@ export class EmployeeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailerService: CustomMailerService,
-    @Inject(forwardRef(() => CompanyService))
     private readonly companyService: CompanyService,
     private readonly s3: S3Service,
   ) {}
