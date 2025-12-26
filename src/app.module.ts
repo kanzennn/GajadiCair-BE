@@ -33,23 +33,43 @@ import { CustomHolidayModule } from './core/custom-holiday/custom-holiday.module
 import { PayrollModule } from './core/payroll/payroll.module';
 import { PayrollAllowanceRuleModule } from './core/payroll-allowance-rule/payroll-allowance-rule.module';
 import { PayrollDeductionRuleModule } from './core/payroll-deduction-rule/payroll-deduction-rule.module';
+import { JobsModule } from './jobs/job.module';
 
 @Module({
   imports: [
+    // ================= CONFIG =================
     ConfigModule.forRoot({
       isGlobal: true,
       load: [appConfig, s3Config, mailerConfig, midtransConfig, redisConfig],
     }),
+
+    // ================= CORE MODULES =================
     AuthModule,
     CompanyModule,
     EmployeeModule,
     BankModule,
     FaceRecognitionModule,
     SubscriptionModule,
-    MidtransModule,
     AttendanceModule,
-    ScheduleModule.forRoot(),
     DashboardModule,
+    LeaveApplicationModule,
+    WorkingDayModule,
+    CustomHolidayModule,
+
+    // ================= PAYROLL =================
+    PayrollModule,
+    PayrollAllowanceRuleModule,
+    PayrollDeductionRuleModule,
+
+    // ================= SERVICES =================
+    MidtransModule,
+    S3Module,
+
+    // ================= JOBS & SCHEDULER =================
+    ScheduleModule.forRoot(), // ⬅️ WAJIB
+    JobsModule, // ⬅️ INI YANG KAMU KURANG
+
+    // ================= CACHE =================
     CacheModule.registerAsync({
       isGlobal: true,
       inject: [ConfigService],
@@ -69,13 +89,6 @@ import { PayrollDeductionRuleModule } from './core/payroll-deduction-rule/payrol
         };
       },
     }),
-    S3Module,
-    LeaveApplicationModule,
-    WorkingDayModule,
-    CustomHolidayModule,
-    PayrollModule,
-    PayrollAllowanceRuleModule,
-    PayrollDeductionRuleModule,
   ],
   controllers: [AppController],
   providers: [AppService],
