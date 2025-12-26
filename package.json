@@ -51,6 +51,7 @@
     "midtrans-client": "^1.4.3",
     "nodemailer": "^7.0.10",
     "passport-jwt": "^4.0.1",
+    "pdfmake": "^0.2.21",
     "prisma": "^6.14.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"

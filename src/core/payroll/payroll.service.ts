@@ -4,10 +4,16 @@ import { PayrollAllowanceRule } from '../payroll-allowance-rule/entities/payroll
 import { PayrollDeductionRule } from '../payroll-deduction-rule/entities/payroll-deduction-rule.entity';
 import { Employee } from '../employee/entities/employee.entity';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+import { CompanyService } from '../company/company.service';
+import { EmployeeService } from '../employee/employee.service';
 
 @Injectable()
 export class PayrollService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly companyService: CompanyService,
+    private readonly employeeService: EmployeeService,
+  ) {}
 
   private getPeriod() {
     const now = new Date();
@@ -162,5 +168,82 @@ export class PayrollService {
     );
 
     return companyPayroll[0]; // cuma 1 employee
+  }
+
+  async getAllPayrollLogByCompany(companyId: string) {
+    const isCompanyExist = await this.companyService.getCompanyById(companyId);
+    if (!isCompanyExist) {
+      throw new BadRequestException('Company not found');
+    }
+    return this.prisma.payrollLog.findMany({
+      where: {
+        employee: {
+          company_id: companyId,
+          deleted_at: null,
+        },
+        deleted_at: null,
+      },
+      include: {
+        employee: {
+          select: {
+            employee_id: true,
+            name: true,
+            email: true,
+            avatar_uri: true,
+          },
+        },
+        payroll_details: true,
+      },
+      orderBy: { payroll_date: 'desc' },
+    });
+  }
+
+  async getAllPayrollLogByEmployee(employeeId: string) {
+    const isEmployeeExist =
+      await this.employeeService.getEmployeeById(employeeId);
+    if (!isEmployeeExist) {
+      throw new BadRequestException('Employee not found');
+    }
+    return this.prisma.payrollLog.findMany({
+      where: {
+        employee_id: employeeId,
+        deleted_at: null,
+      },
+      include: {
+        employee: {
+          select: {
+            employee_id: true,
+            name: true,
+            email: true,
+            avatar_uri: true,
+          },
+        },
+        payroll_details: true,
+      },
+      orderBy: { payroll_date: 'desc' },
+    });
+  }
+
+  async getOnePayrollLog(payrollLogId: string) {
+    const payrollLog = await this.prisma.payrollLog.findFirst({
+      where: { payroll_log_id: payrollLogId, deleted_at: null },
+      include: {
+        employee: {
+          select: {
+            company_id: true,
+            employee_id: true,
+            name: true,
+            email: true,
+            avatar_uri: true,
+          },
+        },
+        payroll_details: true,
+      },
+    });
+
+    if (!payrollLog) {
+      throw new BadRequestException('Payroll log not found');
+    }
+    return payrollLog;
   }
 }
