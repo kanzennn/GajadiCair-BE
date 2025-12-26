@@ -19,7 +19,7 @@ import { CompanyService } from '../company/company.service';
 import { BankService } from '../bank/bank.service';
 import { successResponse } from 'src/utils/response.utils';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
-import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
@@ -27,7 +27,6 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { UpdateProfileEmployeeDto } from './dto/update-profile-employee.dto';
 
 @Controller({ version: '1' })
-@UseGuards(CompanyAuthGuard)
 export class EmployeeController {
   constructor(
     private readonly companyService: CompanyService,
@@ -38,7 +37,9 @@ export class EmployeeController {
   @Get('employee/profile')
   @HttpCode(200)
   @UseGuards(EmployeeAuthGuard)
-  async getEmployeeProfile(@Req() req: Request & { user: TokenPayloadDto }) {
+  async getEmployeeProfile(
+    @Req() req: Request & { user: TokenPayloadInterface },
+  ) {
     return successResponse(
       {
         ...(await this.employeeService.getEmployeeById(req.user.sub)),
@@ -53,7 +54,7 @@ export class EmployeeController {
   @UseGuards(EmployeeAuthGuard)
   @UseInterceptors(FileInterceptor('profile_picture'))
   async updateEmployeeProfile(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: UpdateProfileEmployeeDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
@@ -73,8 +74,9 @@ export class EmployeeController {
   }
 
   @Post('company/employee')
+  @UseGuards(CompanyAuthGuard)
   async createEmployee(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: CreateEmployeeDto,
   ) {
     const company_id = req.user.sub;
@@ -94,7 +96,8 @@ export class EmployeeController {
   }
 
   @Get('company/employee')
-  async getEmployees(@Req() req: Request & { user: TokenPayloadDto }) {
+  @UseGuards(CompanyAuthGuard)
+  async getEmployees(@Req() req: Request & { user: TokenPayloadInterface }) {
     const company_id = req.user.sub;
     const employees =
       await this.employeeService.getEmployeesByCompany(company_id);
@@ -108,8 +111,9 @@ export class EmployeeController {
   }
 
   @Get('company/employee/:employee_id')
+  @UseGuards(CompanyAuthGuard)
   async getEmployeeById(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Param('employee_id') employee_id: string,
   ) {
     const company_id = req.user.sub;
@@ -126,8 +130,9 @@ export class EmployeeController {
   }
 
   @Patch('company/employee/:employee_id')
+  @UseGuards(CompanyAuthGuard)
   async updateEmployee(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Param('employee_id') employee_id: string,
     @Body() dto: UpdateEmployeeDto,
   ) {
@@ -159,8 +164,9 @@ export class EmployeeController {
   }
 
   @Delete('company/employee/:employee_id')
+  @UseGuards(CompanyAuthGuard)
   async deleteEmployee(
-    @Req() req: Request & { user: TokenPayloadDto },
+    @Req() req: Request & { user: TokenPayloadInterface },
     @Param('employee_id') employee_id: string,
   ) {
     const company_id = req.user.sub;
