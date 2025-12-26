@@ -9,5 +9,6 @@ import { CustomMailerModule } from 'src/common/services/mailer/mailer.module';
   imports: [CustomMailerModule],
   controllers: [PayrollController],
   providers: [PayrollService, PrismaService, PayrollJobService],
+  exports: [PayrollService],
 })
 export class PayrollModule {}
