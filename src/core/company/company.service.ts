@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { SubscriptionService } from '../subscription/subscription.service';
-import { EmployeeService } from '../employee/employee.service';
 import { convertFilename } from 'src/utils/convertString.utils';
 import { S3Service } from 'src/common/services/s3/s3.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -11,9 +10,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 export class CompanyService {
   constructor(
     private readonly subscriptionsService: SubscriptionService,
-
     private readonly prisma: PrismaService,
-    private readonly employeeService: EmployeeService,
     private readonly s3: S3Service,
   ) {}
 
@@ -22,8 +19,9 @@ export class CompanyService {
       where: { company_id, deleted_at: null },
     });
 
-    const totalEmployee =
-      await this.employeeService.getCountEmployeesByCompany(company_id);
+    const totalEmployee = await this.prisma.employee.count({
+      where: { company_id, deleted_at: null },
+    });
 
     let seat_capacity = 0;
 
