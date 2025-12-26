@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { CreateSnapSubscriptionDto } from './dto/create-snap-subscription.dto';
 import { TokenPayloadDto } from '../auth/dto/token-payload.dto';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
@@ -12,14 +12,10 @@ import { ConfigService } from '@nestjs/config';
 import { addMonthsSafe } from 'src/utils/date.utils';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { daysLeftCeil } from '../../utils/date.utils';
-import { CompanyService } from '../company/company.service';
 
 @Injectable()
 export class SubscriptionService {
   constructor(
-    @Inject(forwardRef(() => CompanyService))
-    private readonly companyService: CompanyService,
-
     private readonly midtransService: MidtransService,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
@@ -358,26 +354,28 @@ export class SubscriptionService {
   }
 
   async checkDowngradeSubscription(company_id: string) {
-    const company = await this.companyService.getCompanyById(company_id);
+    const company = await this.prisma.company.findUnique({
+      where: { company_id },
+      select: { level_plan: true, plan_expiration: true },
+    });
     if (!company) throw new BadRequestException('Company not found');
 
     const now = new Date();
     const expiresAt = company.plan_expiration;
     const currentPlan = company.level_plan ?? 0;
-    if (currentPlan === 0) {
-      return {
-        can_downgrade: false,
-        message: 'No active subscription to downgrade',
-      };
-    }
-    if (!expiresAt || expiresAt.getTime() <= now.getTime()) {
-      return {
-        can_downgrade: false,
-        message: 'No active subscription to downgrade',
-      };
-    }
-    const daysLeft = daysLeftCeil(expiresAt, now);
 
+    if (
+      currentPlan === 0 ||
+      !expiresAt ||
+      expiresAt.getTime() <= now.getTime()
+    ) {
+      return {
+        can_downgrade: false,
+        message: 'No active subscription to downgrade',
+      };
+    }
+
+    const daysLeft = daysLeftCeil(expiresAt, now);
     if (daysLeft > 5) {
       return {
         can_downgrade: false,
@@ -392,17 +390,17 @@ export class SubscriptionService {
   }
 
   async getSubscriptionStatus(company_id: string) {
-    const company = await this.companyService.getCompanyById(company_id);
+    const company = await this.prisma.company.findUnique({
+      where: { company_id },
+      select: { level_plan: true, plan_expiration: true },
+    });
     if (!company) throw new BadRequestException('Company not found');
 
     const now = new Date();
     const expiresAt = company.plan_expiration;
 
     if (!expiresAt || expiresAt.getTime() <= now.getTime()) {
-      return {
-        level_plan: 0,
-        plan_expiration: null,
-      };
+      return { level_plan: 0, plan_expiration: null };
     }
 
     return {

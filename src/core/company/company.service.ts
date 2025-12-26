@@ -1,4 +1,4 @@
-import { forwardRef, Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { SubscriptionService } from '../subscription/subscription.service';
@@ -10,7 +10,6 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 @Injectable()
 export class CompanyService {
   constructor(
-    @Inject(forwardRef(() => SubscriptionService))
     private readonly subscriptionsService: SubscriptionService,
 
     private readonly prisma: PrismaService,
