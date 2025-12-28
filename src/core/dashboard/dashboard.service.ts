@@ -132,11 +132,11 @@ export class DashboardService {
     const rows = await this.prisma.$queryRaw<
       Array<{
         period: Date;
-        PRESENT: number;
-        LATE: number;
-        ABSENT: number;
-        LEAVE: number;
-        SICK: number;
+        present: number;
+        late: number;
+        absent: number;
+        leave: number;
+        sick: number;
         total: number;
       }>
     >`
@@ -149,11 +149,11 @@ export class DashboardService {
       )
       SELECT
         b.period,
-        COALESCE(SUM(CASE WHEN ea.status = 'PRESENT' AND ea.is_late = false THEN 1 ELSE 0 END), 0)::int AS PRESENT,
-        COALESCE(SUM(CASE WHEN ea.status = 'PRESENT' AND ea.is_late = true  THEN 1 ELSE 0 END), 0)::int AS LATE,
-        COALESCE(SUM(CASE WHEN ea.status = 'ABSENT' THEN 1 ELSE 0 END), 0)::int AS ABSENT,
-        COALESCE(SUM(CASE WHEN ea.status = 'LEAVE'  THEN 1 ELSE 0 END), 0)::int AS LEAVE,
-        COALESCE(SUM(CASE WHEN ea.status = 'SICK'   THEN 1 ELSE 0 END), 0)::int AS SICK,
+        COALESCE(SUM(CASE WHEN ea.status = 'PRESENT' AND ea.is_late = false THEN 1 ELSE 0 END), 0)::int AS present,
+        COALESCE(SUM(CASE WHEN ea.status = 'PRESENT' AND ea.is_late = true  THEN 1 ELSE 0 END), 0)::int AS late,
+        COALESCE(SUM(CASE WHEN ea.status = 'ABSENT' THEN 1 ELSE 0 END), 0)::int AS absent,
+        COALESCE(SUM(CASE WHEN ea.status = 'LEAVE'  THEN 1 ELSE 0 END), 0)::int AS leave,
+        COALESCE(SUM(CASE WHEN ea.status = 'SICK'   THEN 1 ELSE 0 END), 0)::int AS sick,
         COALESCE(COUNT(ea.employee_attendance_id), 0)::int AS total
       FROM buckets b
       LEFT JOIN employee_attendances ea
@@ -193,20 +193,20 @@ export class DashboardService {
       },
       labels,
       series: {
-        PRESENT: rows.map((r) => r.PRESENT),
-        LATE: rows.map((r) => r.LATE),
-        ABSENT: rows.map((r) => r.ABSENT),
-        LEAVE: rows.map((r) => r.LEAVE),
-        SICK: rows.map((r) => r.SICK),
+        PRESENT: rows.map((r) => r.present),
+        LATE: rows.map((r) => r.late),
+        ABSENT: rows.map((r) => r.absent),
+        LEAVE: rows.map((r) => r.leave),
+        SICK: rows.map((r) => r.sick),
         total: rows.map((r) => r.total),
       },
       points: rows.map((r, i) => ({
         period: labels[i],
-        PRESENT: r.PRESENT,
-        LATE: r.LATE,
-        ABSENT: r.ABSENT,
-        LEAVE: r.LEAVE,
-        SICK: r.SICK,
+        PRESENT: r.present,
+        LATE: r.late,
+        ABSENT: r.absent,
+        LEAVE: r.leave,
+        SICK: r.sick,
         total: r.total,
       })),
     };
