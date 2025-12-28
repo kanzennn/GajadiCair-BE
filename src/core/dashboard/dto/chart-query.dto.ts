@@ -8,7 +8,7 @@ import {
 import { Type } from 'class-transformer';
 import { IsEndDateAfterStartDate } from 'src/common/validators/end-after-start.validator';
 
-export class ChartCompanyQueryDto {
+export class ChartQueryDto {
   // YYYY-MM-DD
   @IsOptional()
   @IsDateString({}, { message: 'start_date must be ISO date (YYYY-MM-DD)' })

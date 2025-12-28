@@ -1,9 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-require-imports */
+
 // auth.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { AuthService } from './auth.service';
+import { GoogleOauthService } from 'src/common/services/google/google-oauth.service';
+import { JwtService } from '@nestjs/jwt';
+import { S3Service } from 'src/common/services/s3/s3.service';
+import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+import { PrismaService } from 'src/common/services/prisma/prisma.service';
 
 // ✅ Mock argon2 (hash/verify) biar test stabil (nggak hit DB beneran)
 jest.mock('argon2', () => ({
@@ -44,14 +48,6 @@ describe('AuthService', () => {
     verifyAsync: jest.fn(),
   };
 
-  const companyService = {
-    getCompanyById: jest.fn(),
-  };
-
-  const employeeService = {
-    getEmployeeById: jest.fn(),
-  };
-
   const s3Service = {
     uploadBuffer: jest.fn(),
   };
@@ -62,33 +58,12 @@ describe('AuthService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
-        { provide: 'PrismaService', useValue: prisma },
-        { provide: 'GoogleOauthService', useValue: googleOauthService },
-        { provide: 'JwtService', useValue: jwtService },
-        { provide: 'CompanyService', useValue: companyService },
-        { provide: 'EmployeeService', useValue: employeeService },
-        { provide: 'S3Service', useValue: s3Service },
+        { provide: PrismaService, useValue: prisma },
+        { provide: GoogleOauthService, useValue: googleOauthService },
+        { provide: JwtService, useValue: jwtService },
+        { provide: S3Service, useValue: s3Service },
       ],
-    })
-      // Nest resolve by class token in your code, so map tokens properly:
-      .overrideProvider(
-        require('src/common/services/prisma/prisma.service').PrismaService,
-      )
-      .useValue(prisma)
-      .overrideProvider(
-        require('src/common/services/google/google-oauth.service')
-          .GoogleOauthService,
-      )
-      .useValue(googleOauthService)
-      .overrideProvider(require('@nestjs/jwt').JwtService)
-      .useValue(jwtService)
-      .overrideProvider(require('../company/company.service').CompanyService)
-      .useValue(companyService)
-      .overrideProvider(require('../employee/employee.service').EmployeeService)
-      .useValue(employeeService)
-      .overrideProvider(require('src/common/services/s3/s3.service').S3Service)
-      .useValue(s3Service)
-      .compile();
+    }).compile();
 
     service = module.get(AuthService);
   });
@@ -110,7 +85,8 @@ describe('AuthService', () => {
       const res = await service.loginCompany({
         email: 'a@a.com',
         password: 'correct',
-      } as any);
+      });
+      console.log(res);
 
       expect(prisma.company.findFirst).toHaveBeenCalledWith({
         where: { email: 'a@a.com' },
@@ -129,7 +105,7 @@ describe('AuthService', () => {
       prisma.company.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.loginCompany({ email: 'x@x.com', password: 'correct' } as any),
+        service.loginCompany({ email: 'x@x.com', password: 'correct' }),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -141,7 +117,7 @@ describe('AuthService', () => {
       });
 
       await expect(
-        service.loginCompany({ email: 'a@a.com', password: 'wrong' } as any),
+        service.loginCompany({ email: 'a@a.com', password: 'wrong' }),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
@@ -195,17 +171,9 @@ describe('AuthService', () => {
 
   describe('changeCompanyPassword', () => {
     it('should throw when company not found', async () => {
-      companyService.getCompanyById.mockResolvedValue(null);
-
-      await expect(
-        service.changeCompanyPassword('c1', 'correct', 'new'),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('should throw when company is social login (no password)', async () => {
-      companyService.getCompanyById.mockResolvedValue({
+      prisma.company.findFirst.mockResolvedValue({
         company_id: 'c1',
-        password: null,
+        deleted_at: null,
       });
 
       await expect(
@@ -213,10 +181,35 @@ describe('AuthService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('should update password when old password valid', async () => {
-      companyService.getCompanyById.mockResolvedValue({
+    it('should throw when company is social login (no password)', async () => {
+      prisma.company.findFirst.mockResolvedValue({
+        company_id: 'c1',
+        password: null,
+        deleted_at: null,
+      });
+
+      await expect(
+        service.changeCompanyPassword('c1', 'correct', 'new'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('should throw when old password is incorrect', async () => {
+      prisma.company.findFirst.mockResolvedValue({
         company_id: 'c1',
         password: 'hashed:any',
+        deleted_at: null,
+      });
+
+      await expect(
+        service.changeCompanyPassword('c1', 'wrong', 'new'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('should update password when old password valid', async () => {
+      prisma.company.findFirst.mockResolvedValue({
+        company_id: 'c1',
+        password: 'hashed:any',
+        deleted_at: null,
       });
 
       prisma.company.update.mockResolvedValue({});
@@ -282,7 +275,7 @@ describe('AuthService', () => {
         username: 'emp',
         password: 'correct',
         company_identifier: 'CID',
-      } as any);
+      });
 
       expect(res.employee.password).toBeUndefined();
       expect(res.access_token).toBe('access_token');
@@ -304,24 +297,37 @@ describe('AuthService', () => {
           username: 'emp',
           password: 'correct',
           company_identifier: 'CID',
-        } as any),
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
   describe('changeEmployeePassword', () => {
     it('should throw when employee not found', async () => {
-      employeeService.getEmployeeById.mockResolvedValue(null);
+      prisma.employee.findFirst.mockResolvedValue(null);
 
       await expect(
         service.changeEmployeePassword('e1', 'correct', 'new'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('should update password when old password valid', async () => {
-      employeeService.getEmployeeById.mockResolvedValue({
+    it('should throw when old password is incorrect', async () => {
+      prisma.employee.findFirst.mockResolvedValue({
         employee_id: 'e1',
         password: 'hashed:any',
+        deleted_at: null,
+      });
+
+      await expect(
+        service.changeEmployeePassword('e1', 'wrong', 'new'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('should update password when old password valid', async () => {
+      prisma.employee.findFirst.mockResolvedValue({
+        employee_id: 'e1',
+        password: 'hashed:any',
+        deleted_at: null,
       });
 
       prisma.employee.update.mockResolvedValue({});

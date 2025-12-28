@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 import { LoginWithGoogleAuthDto } from './dto/login-with-google.dto';
 import { LoginAuthDto } from './dto/login-auth.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 describe('AuthControllerV1', () => {
   let controller: AuthControllerV1;
@@ -109,7 +110,7 @@ describe('AuthControllerV1', () => {
       const res = makeRes();
 
       const result = await controller.registerCompany(
-        { email: 'a@a.com', name: 'A', password: 'p' } as any,
+        { email: 'a@a.com', name: 'A', password: 'p' },
         res,
       );
 
@@ -124,12 +125,13 @@ describe('AuthControllerV1', () => {
       authService.changeCompanyPassword.mockResolvedValue({ success: true });
 
       const req = { user: { sub: 'c1' } };
-      const dto = { old_password: 'old', new_password: 'new' };
+      const dto: ChangePasswordDto = {
+        old_password: 'old',
+        new_password: 'new',
+        confirm_password: 'new',
+      };
 
-      const result = await controller.changeCompanyPassword(
-        req as any,
-        dto as any,
-      );
+      const result = await controller.changeCompanyPassword(req as any, dto);
 
       expect(authService.changeCompanyPassword).toHaveBeenCalledWith(
         'c1',
