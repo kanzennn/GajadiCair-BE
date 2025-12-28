@@ -57,11 +57,23 @@ export class DashboardService {
       },
     );
 
+    const attendanceLog = await this.prisma.attendanceLog.findMany({
+      where: {
+        employee: {
+          company_id: companyId,
+        },
+      },
+      include: {
+        employee: true,
+      },
+    });
+
     return {
       total_employee: employeeCount,
       employeePresentToday: employeePresentToday,
       employeeHasNotCheckInToday: employeeHasNotCheckInToday,
       employeeHasNotCheckedOut: employeeHasNotCheckedOut,
+      attendanceLog,
     };
   }
 
