@@ -299,7 +299,8 @@ export class AuthService {
 
   private async verifyRefreshToken(token: string, expectedRole: Role) {
     // Kalau JwtModule kamu sudah register secret global, ini cukup:
-    const payload: TokenPayloadInterface = await this.jwtService.verifyAsync(token);
+    const payload: TokenPayloadInterface =
+      await this.jwtService.verifyAsync(token);
 
     // Kalau kamu memang butuh manual secret:
     // const payload = (await this.jwtService.verifyAsync(token, { secret: process.env.JWT_SECRET })) as TokenPayloadInterface;
