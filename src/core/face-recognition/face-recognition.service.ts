@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosError, AxiosResponse } from 'axios';
 import FormData from 'form-data';
 
@@ -20,6 +20,8 @@ type PythonErrorBody = {
 
 @Injectable()
 export class FaceRecognitionService {
+  private readonly logger = new Logger(FaceRecognitionService.name);
+
   private readonly pythonUrl =
     process.env.PYTHON_FACEREC_URL || 'http://localhost:8001';
 
@@ -48,7 +50,7 @@ export class FaceRecognitionService {
       const data = err.response?.data as PythonErrorBody | undefined;
       const detail = data?.detail;
 
-      console.log(`Python ${context} error:`, data ?? err.message);
+      this.logger.error(`Python ${context} error:`, data ?? err.message);
 
       if (status === 400) {
         if (map400) map400(detail);
@@ -64,7 +66,7 @@ export class FaceRecognitionService {
 
     if (err instanceof BadRequestException) throw err;
 
-    console.log(`Unknown error ${context}:`, err);
+    this.logger.error(`Unknown error ${context}:`, err);
     throw new BadRequestException(`Failed to ${context}`);
   }
 
@@ -238,7 +240,7 @@ export class FaceRecognitionService {
       return res.data;
     } catch (err) {
       if (err instanceof AxiosError) {
-        console.log(
+        this.logger.error(
           'Python get-gesture-list error:',
           err.response?.data || err.message,
         );
@@ -247,7 +249,7 @@ export class FaceRecognitionService {
         );
       }
 
-      console.log('Unknown error get-gesture-list:', err);
+      this.logger.error('Unknown error get-gesture-list:', err);
       throw new BadRequestException('Failed to get gesture list');
     }
   }

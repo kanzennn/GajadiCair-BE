@@ -452,7 +452,7 @@ describe('FaceRecognitionService', () => {
     });
 
     it('should throw BadRequestException on non-axios error', async () => {
-      mockedAxios.get.mockRejectedValueOnce(new Error('boom'));
+      mockedAxios.get.mockRejectedValueOnce('test');
 
       await expect(service.getGestureList()).rejects.toBeInstanceOf(
         BadRequestException,
