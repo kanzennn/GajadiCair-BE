@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 
 import { Injectable } from '@nestjs/common';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 
 import { PrismaService } from 'src/common/services/prisma/prisma.service';

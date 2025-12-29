@@ -55,7 +55,7 @@ describe('CompanyController', () => {
       const req: any = { user: { sub: 'c1' } };
       const dto: any = { name: 'NEW' };
 
-      const res = await controller.updateProfile(req, dto, undefined);
+      const res = await controller.updateProfile(req, dto);
 
       expect(companyService.updateCompanyProfile).toHaveBeenCalledWith(
         'c1',
@@ -99,9 +99,7 @@ describe('CompanyController', () => {
       const req: any = { user: { sub: 'c1' } };
       const dto: any = { name: 'NEW' };
 
-      await expect(
-        controller.updateProfile(req, dto, undefined),
-      ).rejects.toThrow('boom');
+      await expect(controller.updateProfile(req, dto)).rejects.toThrow('boom');
     });
   });
 });

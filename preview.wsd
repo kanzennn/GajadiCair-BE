@@ -1,9 +1,62 @@
 @startuml
-skinparam classAttributeIconSize 0
+title Logical Class Diagram - GajadiCair System (with Job Services)
 
-' =======================
-' ENUMS
-' =======================
+skinparam classAttributeIconSize 0
+hide empty members
+
+' =========================
+' COMPANY
+' =========================
+class Company {
+  company_id: string
+  name: string
+  email: string
+  company_identifier: string
+  avatar_uri: string
+  payroll_day_of_month: number
+  attendance_open_time: string
+  attendance_close_time: string
+  work_start_time: string
+  attendance_tolerance_minutes: number
+  minimum_hours_per_day: number
+  recognize_with_gesture: boolean
+  --
+  getCompanyById()
+  updateCompanyProfile()
+  getAvailableSeats()
+}
+
+' =========================
+' EMPLOYEE
+' =========================
+class Employee {
+  employee_id: string
+  company_id: string
+  name: string
+  email: string
+  username: string
+  is_active: boolean
+  base_salary: number
+  is_face_enrolled: boolean
+  --
+  getEmployeeProfile()
+  updateEmployeeProfile()
+}
+
+Company "1" o-- "*" Employee : employs
+
+' =========================
+' ATTENDANCE
+' =========================
+class EmployeeAttendance {
+  attendance_date: Date
+  status: AttendanceStatus
+  check_in_time: Date
+  check_out_time: Date
+  is_late: boolean
+  --
+}
+
 enum AttendanceStatus {
   PRESENT
   ABSENT
@@ -11,313 +64,78 @@ enum AttendanceStatus {
   SICK
 }
 
-enum LeaveApplicationType {
-  LEAVE
-  SICK
-}
+Employee "1" o-- "*" EmployeeAttendance : records
 
-enum PayrollDetailType {
-  DEDUCTION
-  ALLOWANCE
-  BASE_SALARY
-}
-
-enum PayrollDeductionType {
-  LATE
-  ABSENT
-  LEAVE
-  SICK
-}
-
-enum SubscriptionChangeType {
-  NEW
-  RENEW
-  EXTEND
-  UPGRADE
-  DOWNGRADE
-  UPGRADE_RENEW
-}
-
-' =======================
-' CORE DOMAIN
-' =======================
-class Company {
-  +company_id: String <<PK>>
-  +email: String
-  +company_identifier: String
-  +name: String
-  +password: String?
-  +avatar_uri: String?
-
-  +level_plan: Int
-  +plan_expiration: DateTime?
-
-  +minimum_hours_per_day: Int?
-  +attendance_open_time: Time?
-  +attendance_close_time: Time?
-  +work_start_time: Time?
-  +attendance_tolerance_minutes: Int
-  +payroll_day_of_month: Int?
-
-  +attendance_location_enabled: Boolean
-  +attendance_location: geography?
-  +attendance_radius_meters: Int?
-
-  +recognize_with_gesture: Boolean
-
-  +last_login: DateTime?
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
-}
-
-class Employee {
-  +employee_id: String <<PK>>
-  +company_id: String <<FK>>
-  +bank_id: String? <<FK>>
-
-  +name: String
-  +username: String
-  +email: String
-  +password: String
-  +is_active: Boolean
-
-  +base_salary: Float
-  +is_face_enrolled: Boolean
-
-  +bank_account_number: String?
-  +tax_identification_number: String?
-
-  +avatar_uri: String?
-  +last_login: DateTime?
-
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
-}
-
-class Bank {
-  +bank_id: String <<PK>>
-  +name: String
-  +code: String
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
-}
-
-' =======================
-' ATTENDANCE
-' =======================
-class EmployeeAttendance {
-  +employee_attendance_id: String <<PK>>
-  +employee_id: String <<FK>>
-
-  +attendance_date: Date <<unique(employee_id, attendance_date)>>
-  +check_in_time: DateTime?
-  +check_in_location: geography?
-  +check_out_time: DateTime?
-  +check_out_location: geography?
-  +total_work_hours: Float?
-
-  +status: AttendanceStatus
-  +absent_reason: String?
-
-  +late_minutes: Int?
-  +is_late: Boolean
-
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
-}
-
-class AttendanceLog {
-  +attendance_log_id: String <<PK>>
-  +employee_id: String <<FK>>
-  +log_type: Int  '0 check-in, 1 check-out
-  +timestamp: DateTime
-
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
-}
-
-' =======================
-' LEAVE / SICK
-' =======================
-class EmployeeLeaveApplication {
-  +employee_leave_application_id: String <<PK>>
-  +employee_id: String <<FK>>
-
-  +start_date: Date
-  +end_date: Date
-  +reason: String
-  +status: Int  '0 pending,1 approved,2 rejected
-  +attachment_uri: String?
-  +type: LeaveApplicationType
-
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
-}
-
-' =======================
+' =========================
 ' PAYROLL
-' =======================
+' =========================
 class PayrollLog {
-  +payroll_log_id: String <<PK>>
-  +employee_id: String <<FK>>
-  +amount: Float
-  +payroll_date: DateTime
-  +pdf_uri: String?
-
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
+  payroll_date: Date
+  amount: number
+  --
 }
 
 class PayrollDetail {
-  +payroll_detail_id: String <<PK>>
-  +payroll_log_id: String <<FK>>
-
-  +description: String
-  +type: PayrollDetailType
-  +amount: Float
-
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
+  description: string
+  type: PayrollDetailType
+  amount: number
+  --
 }
 
-class PayrollDeductionRule {
-  +payroll_deduction_rule_id: String <<PK>>
-  +company_id: String <<FK>>
-
-  +name: String
-  +type: PayrollDeductionType
-
-  +percentage: Float?
-  +fixed_amount: Float?
-
-  +per_minute: Boolean
-  +max_minutes: Int?
-  +is_active: Boolean
-
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
+enum PayrollDetailType {
+  BASE_SALARY
+  ALLOWANCE
+  DEDUCTION
 }
 
-class PayrollAllowanceRule {
-  +payroll_allowance_rule_id: String <<PK>>
-  +company_id: String <<FK>>
+Employee "1" o-- "*" PayrollLog : receives
+PayrollLog "1" o-- "*" PayrollDetail : consists_of
 
-  +name: String
-  +percentage: Float?
-  +fixed_amount: Float?
-  +is_active: Boolean
-
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
+' =========================
+' SUBSCRIPTION
+' =========================
+class SubscriptionHistory {
+  level_plan: number
+  period_start: Date
+  period_end: Date
+  --
 }
 
-' =======================
-' COMPANY SETTINGS / META
-' =======================
-class CompanyWorkingDay {
-  +company_working_day_id: String <<PK>>
-  +company_id: String <<FK>>
+Company "1" o-- "*" SubscriptionHistory : subscribes
 
-  +monday: Boolean
-  +tuesday: Boolean
-  +wednesday: Boolean
-  +thursday: Boolean
-  +friday: Boolean
-  +saturday: Boolean
-  +sunday: Boolean
-
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
+' =========================
+' FACE RECOGNITION
+' =========================
+class FaceRecognitionService {
+  --
+  checkFace()
+  enrollFace()
+  verifyFace()
+  deleteFaceData()
 }
 
-class CompanyCustomHoliday {
-  +company_custom_holiday_id: String <<PK>>
-  +company_id: String <<FK>>
+FaceRecognitionService ..> Employee : verifies
 
-  +start_date: Date
-  +end_date: Date
-  +description: String
-
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
+' =========================
+' JOB SERVICES
+' =========================
+class AttendanceJobService {
+  --
+  handleAutoAbsent()
 }
 
-class CompanySocialite {
-  +company_socialite_id: String <<PK>>
-  +company_id: String <<FK>>
-
-  +socialite_name: String
-  +socialite_id: String
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
-
-  'unique(socialite_name, socialite_id)
+class PayrollJobService {
+  --
+  runMonthlyPayroll()
 }
 
-class CompanySubscriptionTransactionHistory {
-  +company_subscription_id: String <<PK>>
-  +company_id: String <<FK>>
-  +midtrans_transaction_id: String?
+AttendanceJobService ..> Employee
+AttendanceJobService ..> EmployeeAttendance
+AttendanceJobService ..> Company
 
-  +gross_amount: Float
-  +change_type: SubscriptionChangeType
-  +from_level_plan: Int?
-  +level_plan: Int
-  +plan_duration_months: Int
-
-  +period_start: DateTime?
-  +period_end: DateTime?
-
-  +midtrans_admin_fee: Float?
-  +midtrans_status: String?
-  +midtrans_payment_method: String?
-  +midtrans_transaction_token: String
-  +midtrans_redirect_url: String
-  +midtrans_paid_at: DateTime?
-
-  +created_at: DateTime
-  +updated_at: DateTime
-  +deleted_at: DateTime?
-}
-
-' =======================
-' RELATIONSHIPS (Multiplicity)
-' =======================
-Company "1" o-- "0..*" Employee : employs
-Bank "1" o-- "0..*" Employee : used_by
-Employee "1" o-- "0..*" EmployeeAttendance : attendances
-Employee "1" o-- "0..*" AttendanceLog : logs
-Employee "1" o-- "0..*" EmployeeLeaveApplication : leave_requests
-Employee "1" o-- "0..*" PayrollLog : payroll_logs
-PayrollLog "1" o-- "0..*" PayrollDetail : details
-
-Company "1" o-- "0..*" PayrollDeductionRule : deduction_rules
-Company "1" o-- "0..*" PayrollAllowanceRule : allowance_rules
-Company "1" o-- "0..*" CompanyCustomHoliday : holidays
-Company "1" o-- "0..*" CompanySocialite : social_logins
-Company "1" o-- "1" CompanyWorkingDay : working_days
-Company "1" o-- "0..*" CompanySubscriptionTransactionHistory : subscription_histories
-
-note right of EmployeeAttendance
-Unique: (employee_id, attendance_date)
-status PRESENT + is_late=true => treated as "LATE" on charts
-end note
-
-note bottom of Company
-Soft delete: deleted_at used across tables
-end note
+PayrollJobService ..> Company
+PayrollJobService ..> Employee
+PayrollJobService ..> PayrollLog
+PayrollJobService ..> PayrollDetail
 
 @enduml

@@ -10,8 +10,6 @@ import { EmployeeService } from '../employee/employee.service';
 import { CompanyService } from '../company/company.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 
-import { Prisma } from 'generated/prisma';
-
 // ✅ Mock date utils: kita bikin deterministik
 jest.mock('src/utils/date.utils', () => {
   const today = new Date('2026-01-01T00:00:00.000Z');
@@ -123,15 +121,6 @@ describe('AttendanceService', () => {
     attendance_close_time: new Date('1970-01-01T23:00:00.000Z'),
     attendance_tolerance_minutes: 0,
     minimum_hours_per_day: 0,
-  };
-
-  // helper: jalankan $transaction
-  const mockTransaction = (handler: (tx: any) => any) => {
-    prisma.$transaction.mockImplementation(async (cb: any) => {
-      const tx = txFactory();
-      return cb(tx);
-    });
-    return handler;
   };
 
   describe('checkInFace', () => {

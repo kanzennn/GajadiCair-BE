@@ -9,9 +9,9 @@ import * as midtransClient from 'midtrans-client';
 
 @Injectable()
 export class MidtransService {
-  private snap: midtransClient.Snap;
+  private readonly snap: midtransClient.Snap;
 
-  constructor(private configService: ConfigService) {
+  constructor(private readonly configService: ConfigService) {
     this.snap = new midtransClient.Snap({
       isProduction: this.configService.get<boolean>('MIDTRANS_IS_PRODUCTION'),
       serverKey: this.configService.get<string>('MIDTRANS_SERVER_KEY'),

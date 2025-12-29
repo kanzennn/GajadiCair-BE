@@ -1,8 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { UnprocessableEntityException, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
-import { Logger, VersioningType } from '@nestjs/common';
+import {
+  Logger,
+  VersioningType,
+  UnprocessableEntityException,
+  ValidationPipe,
+} from '@nestjs/common';
 import appConfig from './config/app.config';
 import cookieParser from 'cookie-parser';
 
@@ -28,7 +32,7 @@ async function bootstrap() {
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
-      if (!origin || whiteList.indexOf(origin) !== -1) {
+      if (!origin || whiteList.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
@@ -67,4 +71,5 @@ async function bootstrap() {
   const logger = new Logger();
   logger.log(`This app running at port ${appConfig().APP_PORT}`);
 }
-bootstrap();
+
+void bootstrap();

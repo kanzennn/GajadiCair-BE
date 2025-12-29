@@ -26,13 +26,12 @@ describe('FaceRecognitionService', () => {
     },
   };
 
-  const makeFile = (overrides: Partial<Express.Multer.File> = {}) =>
-    ({
-      buffer: Buffer.from('x'),
-      originalname: 'a.jpg',
-      mimetype: 'image/jpeg',
-      ...overrides,
-    }) as any;
+  const makeFile = (overrides: Partial<Express.Multer.File> = {}) => ({
+    buffer: Buffer.from('x'),
+    originalname: 'a.jpg',
+    mimetype: 'image/jpeg',
+    ...overrides,
+  });
 
   const makeAxiosError = (params: {
     status: number;

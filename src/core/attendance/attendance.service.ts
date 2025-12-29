@@ -722,9 +722,9 @@ export class AttendanceService {
     }
 
     const isLate =
-      dto.late_minutes !== undefined
-        ? dto.late_minutes > 0
-        : (dto.is_late ?? false);
+      dto.late_minutes === undefined
+        ? (dto.is_late ?? false)
+        : dto.late_minutes > 0;
 
     return this.prisma.employeeAttendance.update({
       where: { employee_attendance_id: dto.employee_attendance_id },
@@ -1184,7 +1184,7 @@ export class AttendanceService {
 
     // validasi hand harus Left/Right + unique kalau 2
     const normalizedHands = dto.hand.map((h) => this.normalizeHand(h));
-    if (normalizedHands.some((h) => h === null)) {
+    if (normalizedHands.includes(null)) {
       throw new BadRequestException('hand must be Left or Right');
     }
 

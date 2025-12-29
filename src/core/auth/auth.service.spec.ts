@@ -346,7 +346,7 @@ describe('AuthService', () => {
     beforeEach(() => {
       // mock fetch used by downloadImageToBuffer
 
-      (global as any).fetch = jest.fn(() => ({
+      (globalThis as any).fetch = jest.fn(() => ({
         ok: true,
         headers: { get: () => 'image/jpeg' },
         arrayBuffer: () => new ArrayBuffer(8),

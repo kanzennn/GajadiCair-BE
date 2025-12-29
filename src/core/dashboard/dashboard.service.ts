@@ -361,12 +361,16 @@ export class DashboardService {
     const { companyId, startDate, endDate, granularity } = params;
 
     const truncUnit = granularity;
-    const step =
-      granularity === 'day'
-        ? '1 day'
-        : granularity === 'week'
-          ? '1 week'
-          : '1 month';
+
+    let step: string;
+
+    if (granularity === 'day') {
+      step = '1 day';
+    } else if (granularity === 'week') {
+      step = '1 week';
+    } else {
+      step = '1 month';
+    }
 
     return this.prisma.$queryRaw<ChartRow[]>`
       WITH buckets AS (
@@ -407,12 +411,15 @@ export class DashboardService {
     const { employeeId, startDate, endDate, granularity } = params;
 
     const truncUnit = granularity;
-    const step =
-      granularity === 'day'
-        ? '1 day'
-        : granularity === 'week'
-          ? '1 week'
-          : '1 month';
+
+    let step: string;
+    if (granularity === 'day') {
+      step = '1 day';
+    } else if (granularity === 'week') {
+      step = '1 week';
+    } else {
+      step = '1 month';
+    }
 
     return this.prisma.$queryRaw<ChartRow[]>`
       WITH buckets AS (
