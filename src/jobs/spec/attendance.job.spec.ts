@@ -115,7 +115,6 @@ describe('AttendanceJobService', () => {
 
     it('should skip employees who already have attendance record', async () => {
       freezeNow('2025-12-29T10:00:00.000Z');
-      const targetDate = dateOnlyUTC('2025-12-28');
 
       prisma.employee.findMany.mockResolvedValue([
         {
@@ -149,7 +148,6 @@ describe('AttendanceJobService', () => {
 
     it('should skip when not working day', async () => {
       freezeNow('2025-12-29T10:00:00.000Z');
-      const targetDate = dateOnlyUTC('2025-12-28'); // Sunday
 
       prisma.employee.findMany.mockResolvedValue([
         {

@@ -5,7 +5,7 @@ import { BadRequestException } from 'src/common/exceptions/badRequest.exception'
 
 @Injectable()
 export class GoogleOauthService {
-  private client: OAuth2Client;
+  private readonly client: OAuth2Client;
   private readonly googleClientId: string;
 
   constructor(private readonly configService: ConfigService) {

@@ -173,11 +173,6 @@ describe('LeaveApplicationService', () => {
         type: 'SICK',
       } as any);
 
-      // verify create called with normalized dates + trimmed reason
-      const tx = prisma.$transaction.mock.calls[0][0] // cb
-        ? null
-        : null;
-
       expect(res).toMatchObject({
         employee_leave_application_id: 'la1',
         employee_id: 'e1',

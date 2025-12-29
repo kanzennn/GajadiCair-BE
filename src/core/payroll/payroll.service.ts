@@ -155,9 +155,9 @@ export class PayrollService {
 
       if (d.type === 'LATE' && lateMinutes > 0) {
         const cappedMinutes =
-          d.max_minutes != null
-            ? Math.min(lateMinutes, d.max_minutes)
-            : lateMinutes;
+          d.max_minutes === null
+            ? lateMinutes
+            : Math.min(lateMinutes, d.max_minutes);
 
         if (d.per_minute) {
           amount = cappedMinutes * (d.fixed_amount ?? 0);

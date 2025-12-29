@@ -7,7 +7,7 @@ import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { MidtransService } from 'src/common/services/midtrans/midtrans.service';
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 
 describe('SubscriptionService', () => {
   let service: SubscriptionService;
