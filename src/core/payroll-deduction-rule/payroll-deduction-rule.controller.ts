@@ -9,13 +9,16 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
+
+import { successResponse } from 'src/utils/response.utils';
+
+import { CompanyAuthGuard } from '../auth/guards/company.guard';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
+
 import { PayrollDeductionRuleService } from './payroll-deduction-rule.service';
 import { CreatePayrollDeductionRuleDto } from './dto/create-payroll-deduction-rule.dto';
 import { UpdatePayrollDeductionRuleDto } from './dto/update-payroll-deduction-rule.dto';
-import { Request } from 'express';
-import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
-import { CompanyAuthGuard } from '../auth/guards/company.guard';
-import { successResponse } from 'src/utils/response.utils';
 
 @Controller({ path: 'company/payroll/deduction-rules', version: '1' })
 @UseGuards(CompanyAuthGuard)
@@ -23,6 +26,8 @@ export class PayrollDeductionRuleController {
   constructor(
     private readonly payrollDeductionRuleService: PayrollDeductionRuleService,
   ) {}
+
+  // ===================== CRUD =====================
 
   @Post()
   async create(

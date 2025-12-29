@@ -1,10 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import { CreateLeaveApplicationDto } from './dto/create-leave-application.dto';
+
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
-import { EmployeeService } from '../employee/employee.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+
+import { EmployeeService } from '../employee/employee.service';
+
+import { CreateLeaveApplicationDto } from './dto/create-leave-application.dto';
 import { UpdateStatusLeaveApplicationDto } from './dto/update-status-leave-application.dto';
-import { AttendanceStatus } from 'generated/prisma';
+
+import { AttendanceStatus, Prisma } from 'generated/prisma';
+
+type LeaveStatus = 0 | 1 | 2; // 0=pending, 1=approved, 2=rejected
+type LeaveType = 'LEAVE' | 'SICK';
+
 @Injectable()
 export class LeaveApplicationService {
   constructor(
@@ -12,18 +20,13 @@ export class LeaveApplicationService {
     private readonly employeeService: EmployeeService,
   ) {}
 
+  // ===================== Employee =====================
+
   async getEmployeeLeaveApplications(employee_id: string) {
-    const leaveApplications =
-      await this.prisma.employeeLeaveApplication.findMany({
-        where: {
-          employee_id,
-          deleted_at: null,
-        },
-        orderBy: {
-          created_at: 'desc',
-        },
-      });
-    return leaveApplications;
+    return this.prisma.employeeLeaveApplication.findMany({
+      where: { employee_id, deleted_at: null },
+      orderBy: { created_at: 'desc' },
+    });
   }
 
   async create(employee_id: string, dto: CreateLeaveApplicationDto) {
@@ -31,21 +34,16 @@ export class LeaveApplicationService {
       const employee = await this.employeeService.getEmployeeById(employee_id);
       if (!employee) throw new BadRequestException('Employee not found');
 
-      // Parse "YYYY-MM-DD" jadi DATE murni (00:00) biar stabil
-      const startDate = new Date(`${dto.start_date}T00:00:00.000Z`);
-      const endDate = new Date(`${dto.end_date}T00:00:00.000Z`);
+      const { startDate, endDate } = this.parseDateRangeOrThrow(
+        dto.start_date,
+        dto.end_date,
+      );
 
-      // Double safety
-      if (endDate < startDate) {
-        throw new BadRequestException('end_date must be >= start_date');
-      }
-
-      // (Opsional tapi penting) Cegah overlap dengan leave lain (pending/approved)
       const overlap = await tx.employeeLeaveApplication.findFirst({
         where: {
           employee_id,
           deleted_at: null,
-          status: { in: [0, 1] }, // pending & approved
+          status: { in: [0, 1] as LeaveStatus[] }, // pending & approved
           AND: [
             { start_date: { lte: endDate } },
             { end_date: { gte: startDate } },
@@ -60,45 +58,36 @@ export class LeaveApplicationService {
         );
       }
 
-      const created = await tx.employeeLeaveApplication.create({
+      return tx.employeeLeaveApplication.create({
         data: {
           employee_id,
           start_date: startDate,
           end_date: endDate,
           reason: dto.reason.trim(),
           attachment_uri: dto.attachment_uri,
-          type: dto.type as 'LEAVE' | 'SICK',
+          type: dto.type as LeaveType,
         },
       });
-
-      return created;
     });
   }
 
+  // ===================== Company =====================
+
   async getCompanyLeaveApplications(company_id: string) {
-    const leaveApplications =
-      await this.prisma.employeeLeaveApplication.findMany({
-        where: {
-          employee: {
-            company_id,
-          },
-          deleted_at: null,
-        },
-        orderBy: {
-          created_at: 'desc',
-        },
-        include: {
-          employee: {
-            select: {
-              employee_id: true,
-              name: true,
-              email: true,
-              avatar_uri: true,
-            },
+    return this.prisma.employeeLeaveApplication.findMany({
+      where: { employee: { company_id }, deleted_at: null },
+      orderBy: { created_at: 'desc' },
+      include: {
+        employee: {
+          select: {
+            employee_id: true,
+            name: true,
+            email: true,
+            avatar_uri: true,
           },
         },
-      });
-    return leaveApplications;
+      },
+    });
   }
 
   async updateLeaveApplicationStatus(
@@ -123,12 +112,10 @@ export class LeaveApplicationService {
       });
 
       if (!leave) throw new BadRequestException('Leave application not found');
-
-      if (leave.status !== 0) {
+      if (leave.status !== 0)
         throw new BadRequestException('Leave application already processed');
-      }
 
-      const newStatus = dto.is_approve ? 1 : 2;
+      const newStatus: LeaveStatus = dto.is_approve ? 1 : 2;
 
       const updated = await tx.employeeLeaveApplication.update({
         where: {
@@ -137,49 +124,78 @@ export class LeaveApplicationService {
         data: { status: newStatus },
       });
 
-      // kalau approved → buat attendance LEAVE untuk setiap tanggal
       if (newStatus === 1) {
-        // normalize ke tanggal murni (00:00 UTC) biar tidak geser hari
-        const start = new Date(
-          Date.UTC(
-            leave.start_date.getUTCFullYear(),
-            leave.start_date.getUTCMonth(),
-            leave.start_date.getUTCDate(),
-          ),
-        );
-        const end = new Date(
-          Date.UTC(
-            leave.end_date.getUTCFullYear(),
-            leave.end_date.getUTCMonth(),
-            leave.end_date.getUTCDate(),
-          ),
-        );
-
-        const rows: {
-          employee_id: string;
-          attendance_date: Date;
-          status: AttendanceStatus;
-        }[] = [];
-
-        for (
-          let cursor = new Date(start);
-          cursor <= end;
-          cursor.setUTCDate(cursor.getUTCDate() + 1)
-        ) {
-          rows.push({
-            employee_id: leave.employee_id,
-            attendance_date: new Date(cursor),
-            status: leave.type,
-          });
-        }
-
-        await tx.employeeAttendance.createMany({
-          data: rows,
-          skipDuplicates: true,
+        await this.createAttendanceForApprovedLeave(tx, {
+          employee_id: leave.employee_id,
+          start_date: leave.start_date,
+          end_date: leave.end_date,
+          status: leave.type as AttendanceStatus,
         });
       }
 
       return updated;
+    });
+  }
+
+  // ===================== Private Helpers =====================
+
+  private parseDateRangeOrThrow(startYmd: string, endYmd: string) {
+    // Parse "YYYY-MM-DD" -> DATE murni 00:00 UTC biar stabil
+    const startDate = new Date(`${startYmd}T00:00:00.000Z`);
+    const endDate = new Date(`${endYmd}T00:00:00.000Z`);
+
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      throw new BadRequestException('Invalid start_date or end_date');
+    }
+
+    if (endDate < startDate) {
+      throw new BadRequestException('end_date must be >= start_date');
+    }
+
+    return { startDate, endDate };
+  }
+
+  private normalizeUtcDateOnly(d: Date) {
+    return new Date(
+      Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+    );
+  }
+
+  private async createAttendanceForApprovedLeave(
+    tx: Prisma.TransactionClient,
+    params: {
+      employee_id: string;
+      start_date: Date;
+      end_date: Date;
+      status: AttendanceStatus;
+    },
+  ) {
+    const start = this.normalizeUtcDateOnly(params.start_date);
+    const end = this.normalizeUtcDateOnly(params.end_date);
+
+    const rows: {
+      employee_id: string;
+      attendance_date: Date;
+      status: AttendanceStatus;
+    }[] = [];
+
+    for (
+      let cursor = new Date(start);
+      cursor <= end;
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
+    ) {
+      rows.push({
+        employee_id: params.employee_id,
+        attendance_date: new Date(cursor),
+        status: params.status,
+      });
+    }
+
+    // NOTE: tx di sini sebenarnya TransactionClient; tapi PrismaService juga punya createMany
+    // biar typing rapih, bisa ganti signature jadi Prisma.TransactionClient.
+    await tx.employeeAttendance.createMany({
+      data: rows,
+      skipDuplicates: true,
     });
   }
 }

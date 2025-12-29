@@ -50,7 +50,10 @@ export class EmployeeController {
   async getEmployeeProfile(
     @Req() req: Request & { user: TokenPayloadInterface },
   ) {
-    const employee = await this.employeeService.getEmployeeById(req.user.sub);
+    const employee = await this.employeeService.getEmployeeByIdIncludeCompany(
+      req.user.sub,
+    );
+
     if (!employee) throw new BadRequestException('Employee not found');
 
     // NOTE: pastikan `getSubscriptionStatus` memang butuh employee_id

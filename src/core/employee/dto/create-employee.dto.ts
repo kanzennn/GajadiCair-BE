@@ -1,4 +1,10 @@
-import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsNumber,
+  IsNumberString,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class CreateEmployeeDto {
   @IsString()
@@ -17,6 +23,7 @@ export class CreateEmployeeDto {
   base_salary: number;
 
   @IsString()
+  @IsNumberString()
   bank_id: string;
 
   @IsString()
