@@ -1,0 +1,146 @@
+name: 🚀 CI/CD Development
+
+on:
+  push:
+    branches: [dev]
+
+jobs:
+  test:
+    name: ✅ Run Tests
+    runs-on: ubuntu-latest
+    environment: Development
+
+    steps:
+      - name: 📦 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🧰 Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: ⚡ Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: 📥 Install Dependencies
+        run: bun install
+
+      # OPTIONAL: kalau test kamu butuh generate prisma client
+      - name: 🧬 Prisma Generate
+        run: bunx prisma generate
+
+      - name: ✅ Run Unit Tests
+        run: bun test
+        env:
+          NODE_ENV: test
+
+  build-and-push:
+    name: 🐳 Build & Push Image
+    runs-on: ubuntu-latest
+    environment: Development
+    needs: test
+
+    steps:
+      - name: 📦 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🔐 Docker Login
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: 🛠️ Build Docker Image
+        run: docker build --no-cache -t kanzen523/gajadicair-api:latest .
+
+      - name: 📤 Push Docker Image
+        run: docker push kanzen523/gajadicair-api:latest
+
+  deploy:
+    name: 🚢 Deploy to VPS
+    runs-on: ubuntu-latest
+    environment: Development
+    needs: build-and-push
+
+    steps:
+      - name: 🚢 Deploy App
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "🔁 Pulling latest Docker image..."
+            docker pull kanzen523/gajadicair-api:latest
+
+            echo "🛑 Stopping and removing old container (if exists)..."
+            docker stop gajadicair-api || true
+            docker rm gajadicair-api || true
+
+            echo "🚀 Running new container..."
+            docker run -d \
+              --name gajadicair-api \
+              --network postgis-setup_postgis-network \
+              --restart unless-stopped \
+              -e NODE_ENV="development" \
+              -e APP_NAME="${{ vars.APP_NAME }}" \
+              -e JWT_SECRET="${{ vars.JWT_SECRET }}" \
+              -e JWT_EXPIRES_IN="${{ vars.JWT_EXPIRES_IN }}" \
+              -e GOOGLE_CLIENT_ID="${{ secrets.GOOGLE_CLIENT_ID }}" \
+              -e GOOGLE_CLIENT_SECRET="${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+              -e GOOGLE_REDIRECT_URI="${{ secrets.GOOGLE_REDIRECT_URI }}" \
+              -e S3_ENDPOINT="${{ vars.S3_ENDPOINT }}" \
+              -e S3_REGION="${{ vars.S3_REGION }}" \
+              -e S3_ACCESS_KEY_ID="${{ secrets.S3_ACCESS_KEY_ID }}" \
+              -e S3_SECRET_ACCESS_KEY="${{ secrets.S3_SECRET_ACCESS_KEY }}" \
+              -e S3_FORCE_PATH_STYLE="${{ vars.S3_FORCE_PATH_STYLE }}" \
+              -e S3_BUCKET="${{ vars.S3_BUCKET }}" \
+              -e S3_PUBLIC_BASE_URL="${{ vars.S3_PUBLIC_BASE_URL }}" \
+              -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              -e MAILER_HOST="${{ vars.MAILER_HOST }}" \
+              -e MAILER_PORT="${{ vars.MAILER_PORT }}" \
+              -e MAILER_USER="${{ secrets.MAILER_USER }}" \
+              -e MAILER_SECURE="${{ secrets.MAILER_SECURE }}" \
+              -e MAILER_PASSWORD="${{ secrets.MAILER_PASSWORD }}" \
+              -e MAILER_TLS_REJECT_UNAUTHORIZED="${{ vars.MAILER_TLS_REJECT_UNAUTHORIZED }}" \
+              -e PYTHON_FACEREC_URL="${{ secrets.PYTHON_FACEREC_URL }}" \
+              -e MIDTRANS_CLIENT_KEY="${{ secrets.MIDTRANS_CLIENT_KEY }}" \
+              -e MIDTRANS_SERVER_KEY="${{ secrets.MIDTRANS_SERVER_KEY }}" \
+              -e MIDTRANS_IS_PRODUCTION=${{ secrets.MIDTRANS_IS_PRODUCTION }} \
+              -e MIDTRANS_MERCHANT_ID="${{ secrets.MIDTRANS_MERCHANT_ID }}" \
+              -e REDIS_URL="${{ secrets.REDIS_URL }}" \
+              -p ${{ vars.PORT }}:3000 \
+              kanzen523/gajadicair-api:latest
+
+            echo "🧹 Cleaning up unused Docker resources..."
+            docker system prune -f
+
+            echo "🔄 Running Prisma migrations..."
+            docker exec gajadicair-api bun prisma migrate deploy
+
+            echo "✅ Deployment to Development environment completed successfully!"
+
+      - name: 🚢 Deploy Prisma Studio
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "🛑 Stopping old prisma studio (if exists)..."
+            docker stop gajadicair-prisma-studio || true
+            docker rm gajadicair-prisma-studio || true
+
+            echo "🧪 Running Prisma Studio (PUBLIC on :5555)..."
+            docker run -d \
+              --name gajadicair-prisma-studio \
+              --network postgis-setup_postgis-network \
+              --restart unless-stopped \
+              -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+              -p 5555:5555 \
+              kanzen523/gajadicair-api:latest \
+              bunx prisma studio --hostname 0.0.0.0 --port 5555

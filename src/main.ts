@@ -17,7 +17,11 @@ async function bootstrap() {
     type: VersioningType.URI,
   });
 
-  const whiteList: string[] = ['http://localhost:3000'];
+  const whiteList: string[] = [
+    'http://localhost:3000',
+    'https://gajadicairbrooo.netlify.app',
+    'http://localhost:5173',
+  ];
 
   app.enableCors({
     origin: (
@@ -57,6 +61,7 @@ async function bootstrap() {
     }),
   );
 
+  app.use(cookieParser());
   app.use(helmet());
   await app.listen(appConfig().APP_PORT ?? 3000);
   const logger = new Logger();

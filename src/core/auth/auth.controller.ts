@@ -1,60 +1,165 @@
-import { Controller, Post, Body, Res, HttpCode } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Put,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
+
 import { AuthService } from './auth.service';
+import { successResponse } from 'src/utils/response.utils';
+import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+
+import { CompanyAuthGuard } from './guards/company.guard';
+import { EmployeeAuthGuard } from './guards/employee.guard';
+import { TokenPayloadInterface } from './interfaces/token-payload.interface';
+
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { RegisterAuthDto } from './dto/register-auth.dto';
 import { LoginWithGoogleAuthDto } from './dto/login-with-google.dto';
-import type { Response } from 'express';
-import { successResponse } from 'src/utils/response.utils';
+import { LoginEmployeeAuthDto } from './dto/login-employee-auth.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthControllerV1 {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('login')
+  // ===================== Helpers =====================
+  private setRefreshTokenCookie(res: Response, refreshToken: string) {
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      // secure: process.env.NODE_ENV === 'production',
+      secure: false,
+      sameSite: 'none',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60, // 7 hari (detik)
+    });
+  }
+
+  private getRefreshToken(req: Request): string {
+    const refreshToken = req.cookies?.['refresh_token'] as string | undefined;
+    if (!refreshToken) throw new BadRequestException('Refresh token not found');
+    return refreshToken;
+  }
+
+  // ===================== COMPANY =====================
+  @Post('company/login')
   @HttpCode(200)
-  async login(
-    @Body() loginAuthDto: LoginAuthDto,
+  async loginCompany(
+    @Body() dto: LoginAuthDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { user, access_token, refresh_token } =
-      await this.authService.login(loginAuthDto);
+    const { company, access_token, refresh_token } =
+      await this.authService.loginCompany(dto);
 
-    res.setHeader('Authorization', `Bearer ${access_token}`);
+    this.setRefreshTokenCookie(res, refresh_token);
 
-    res.cookie('refresh_token', refresh_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 7 * 24 * 60 * 60, // 7 hari
-    });
-
-    return successResponse(user, 'Login successful');
+    return successResponse({ company, access_token }, 'Login successful');
   }
 
-  @Post('/login/google')
-  async loginWithGoogle(
-    @Body() loginWithGoogleAuthDto: LoginWithGoogleAuthDto,
+  @Post('company/login/google')
+  @HttpCode(200)
+  async loginWithGoogleCompany(
+    @Body() dto: LoginWithGoogleAuthDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { user, access_token, refresh_token } =
-      await this.authService.googleLogin(loginWithGoogleAuthDto.id_token);
+    const { company, access_token, refresh_token } =
+      await this.authService.googleLoginCompany(dto.id_token);
 
-    res.setHeader('Authorization', `Bearer ${access_token}`);
+    this.setRefreshTokenCookie(res, refresh_token);
 
-    res.cookie('refresh_token', refresh_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 7 * 24 * 60 * 60, // 7 hari
-    });
-
-    return successResponse(user, 'Login successful');
+    return successResponse({ company, access_token }, 'Login successful');
   }
 
-  @Post('register')
-  register(@Body() registerAuthDto: RegisterAuthDto) {
-    return this.authService.register(registerAuthDto);
+  @Post('company/register')
+  @HttpCode(201)
+  async registerCompany(
+    @Body() dto: RegisterAuthDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { company, access_token, refresh_token } =
+      await this.authService.registerCompany(dto);
+
+    this.setRefreshTokenCookie(res, refresh_token);
+
+    return successResponse(
+      { company, access_token },
+      'Register successful',
+      201,
+    );
+  }
+
+  @Put('company/change-password')
+  @HttpCode(200)
+  @UseGuards(CompanyAuthGuard)
+  async changeCompanyPassword(
+    @Req() req: Request & { user: TokenPayloadInterface },
+    @Body() dto: ChangePasswordDto,
+  ) {
+    await this.authService.changeCompanyPassword(
+      req.user.sub,
+      dto.old_password,
+      dto.new_password,
+    );
+
+    return successResponse(null, 'Password changed successfully');
+  }
+
+  @Get('company/refresh-token')
+  @HttpCode(200)
+  async refreshCompanyToken(@Req() req: Request) {
+    const refreshToken = this.getRefreshToken(req);
+
+    const { access_token } =
+      await this.authService.refreshCompanyToken(refreshToken);
+
+    return successResponse({ access_token }, 'Token refreshed successfully');
+  }
+
+  // ===================== EMPLOYEE =====================
+  @Post('employee/login')
+  @HttpCode(200)
+  async loginEmployee(
+    @Body() dto: LoginEmployeeAuthDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { employee, access_token, refresh_token } =
+      await this.authService.loginEmployee(dto);
+
+    this.setRefreshTokenCookie(res, refresh_token);
+
+    return successResponse({ employee, access_token }, 'Login successful');
+  }
+
+  @Put('employee/change-password')
+  @HttpCode(200)
+  @UseGuards(EmployeeAuthGuard) // ✅ FIX: sebelumnya CompanyAuthGuard
+  async changeEmployeePassword(
+    @Req() req: Request & { user: TokenPayloadInterface },
+    @Body() dto: ChangePasswordDto,
+  ) {
+    await this.authService.changeEmployeePassword(
+      req.user.sub,
+      dto.old_password,
+      dto.new_password,
+    );
+
+    return successResponse(null, 'Password changed successfully');
+  }
+
+  @Get('employee/refresh-token')
+  @HttpCode(200)
+  async refreshEmployeeToken(@Req() req: Request) {
+    const refreshToken = this.getRefreshToken(req);
+
+    const { access_token } =
+      await this.authService.refreshEmployeeToken(refreshToken);
+
+    return successResponse({ access_token }, 'Token refreshed successfully');
   }
 }

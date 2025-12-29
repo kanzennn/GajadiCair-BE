@@ -7,39 +7,358 @@
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
+  binaryTargets = ["native", "debian-openssl-1.1.x"]
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  extensions = [postgis]
 }
 
-model User {
-  id          String   @id @default(uuid())
-  email       String 
-  name        String?
+model Company {
+  company_id          String   @id @default(uuid())
+  email       String
+  company_identifier String
+  name        String
   password    String?
   avatar_uri String?
+
+  level_plan  Int   @default(0) // 0: free, 1: basic, 2: pro
+  plan_expiration DateTime?
+
+  minimum_hours_per_day          Int?        // mis. 8
+
+  attendance_open_time           DateTime?   @db.Time(0) // 08:30
+  attendance_close_time          DateTime?   @db.Time(0) // 17:30 (opsional)
+
+  work_start_time                DateTime?   @db.Time(0) // 09:00
+
+  attendance_tolerance_minutes   Int?        @default(0)
+
+  payroll_day_of_month         Int?         // tanggal gajian setiap bulan (contoh: 25)
+
+  attendance_location_enabled  Boolean     @default(false)
+  attendance_location      Unsupported("geography")?
+  attendance_radius_meters      Int? 
+
+  recognize_with_gesture     Boolean     @default(false)
+
+  last_login        DateTime?
+
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
   deleted_at  DateTime?
 
-  socialites  UserSocialite[]
+  subscription_transactions_histories  CompanySubscriptionTransactionHistory[]
+  socialites  CompanySocialite[]
+  employees    Employee[]
+  payroll_deduction_rules  PayrollDeductionRule[]
+  payroll_allowance_rules   PayrollAllowanceRule[]
+  custom_holidays  CompanyCustomHoliday[]
+  
+  working_days  CompanyWorkingDay[]
 
-  @@map("users")
+  @@map("companies")
 }
 
-model UserSocialite {
-  id              String   @id @default(uuid())
-  user_id         String
+enum PayrollDeductionType {
+  LATE       // telat
+  ABSENT     // tidak hadir
+  LEAVE     // opsional (cuti potong gaji)
+  SICK      // opsional
+}
+
+
+model PayrollDeductionRule {
+  payroll_deduction_rule_id String  @id @default(uuid())
+  company_id                String
+
+  name                      String
+  type                      PayrollDeductionType
+
+  // salah satu
+  percentage                Float?
+  fixed_amount              Float?
+
+  // khusus telat
+  per_minute                Boolean @default(false) // true = per menit
+  max_minutes               Int?     // batas menit (optional)
+
+  is_active                 Boolean  @default(true)
+
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+  deleted_at                DateTime?
+
+  company Company @relation(fields: [company_id], references: [company_id], onDelete: Cascade)
+
+  @@map("payroll_deduction_rules")
+}
+
+
+model PayrollAllowanceRule {
+  payroll_allowance_rule_id String  @id @default(uuid())
+  company_id                String
+  name                      String
+  percentage                Float?
+  fixed_amount              Float?       
+  is_active                 Boolean       @default(true)
+
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+  deleted_at                DateTime?
+
+  company Company @relation(fields: [company_id], references: [company_id], onDelete: Cascade)
+
+  @@map("payroll_allowance_rules")
+}
+
+model CompanySocialite {
+  company_socialite_id              String   @id @default(uuid())
+  company_id         String
   socialite_name  String
   socialite_id    String
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
   deleted_at      DateTime?
 
-  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [company_id], references: [company_id], onDelete: Cascade)
+  
 
-  @@map("user_socialites")
+  @@map("company_socialites")
   @@unique([socialite_name, socialite_id])
+}
+
+enum SubscriptionChangeType {
+  NEW
+  RENEW
+  EXTEND
+  UPGRADE
+  DOWNGRADE
+  UPGRADE_RENEW
+}
+
+model CompanySubscriptionTransactionHistory {
+  company_subscription_id   String   @id @default(uuid())
+  company_id                String
+  midtrans_transaction_id   String?
+
+  gross_amount              Float
+
+  // plan info
+  change_type               SubscriptionChangeType @default(NEW)
+  from_level_plan           Int?
+  level_plan                Int // ini jadi "to_level_plan"
+  plan_duration_months      Int
+
+  // ✅ periode subscription yang dibayar transaksi ini
+  period_start              DateTime?
+  period_end                DateTime?
+
+  midtrans_admin_fee        Float?
+  midtrans_status           String?
+  midtrans_payment_method   String?
+  midtrans_transaction_token String
+  midtrans_redirect_url     String
+  midtrans_paid_at          DateTime?
+
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+  deleted_at                DateTime?
+
+  company                   Company @relation(fields: [company_id], references: [company_id])
+
+  @@map("company_subscription_transaction_histories")
+}
+
+
+model Bank { // ADMIN USE ONLY
+  bank_id     String   @id @default(uuid())
+  name        String
+  code        String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  deleted_at  DateTime?
+
+  employees   Employee[]
+
+  @@map("banks")
+}
+
+model Employee {
+  employee_id         String       @id @default(uuid())
+  name                String
+  username            String
+  email               String
+  company_id          String
+  password            String
+  is_active           Boolean       @default(true)
+  base_salary              Float
+  is_face_enrolled             Boolean @default(false)
+  bank_id             String?
+  bank_account_number      String?
+  tax_identification_number   String?
+
+  avatar_uri String?
+  last_login        DateTime?
+
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @updatedAt
+  deleted_at          DateTime?
+
+  company Company @relation(fields: [company_id], references: [company_id], onDelete: Cascade)
+  attendance_logs   AttendanceLog[]
+  bank Bank? @relation(fields: [bank_id], references: [bank_id])
+  attendances      EmployeeAttendance[]
+  payroll_logs     PayrollLog[]
+  leave_applications  EmployeeLeaveApplication[]
+
+  @@map("employees")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LEAVE
+  SICK
+}
+
+model EmployeeAttendance {
+  employee_attendance_id   String     @id @default(uuid())
+  employee_id              String
+  attendance_date           DateTime? @db.Date
+  check_in_time           DateTime?
+  check_in_location      Unsupported("geography")?
+  check_out_time          DateTime?
+  check_out_location     Unsupported("geography")?
+  total_work_hours        Float?
+
+  status                   AttendanceStatus      @default(PRESENT) // 0: PRESENT, 1: ABSENT, 2: LEAVE, 3: SICK
+  absent_reason            String?
+
+  late_minutes           Int?
+  is_late                Boolean  @default(false)
+
+  created_at              DateTime   @default(now())
+  updated_at              DateTime   @updatedAt
+  deleted_at              DateTime?
+
+  employee Employee @relation(fields: [employee_id], references: [employee_id], onDelete: Cascade)
+
+  @@unique([employee_id, attendance_date])
+  @@map("employee_attendances")
+}
+
+enum LeaveApplicationType {
+  LEAVE
+  SICK
+}
+
+model EmployeeLeaveApplication {
+  employee_leave_application_id   String     @id @default(uuid())
+  employee_id                     String
+  start_date                      DateTime   @db.Date
+  end_date                        DateTime   @db.Date
+  reason                          String
+  status                          Int     @default(0)   // 0: pending, 1: approved, 2: rejected
+  attachment_uri                  String?
+  type                            LeaveApplicationType @default(LEAVE)
+
+  created_at                      DateTime   @default(now())
+  updated_at                      DateTime   @updatedAt
+  deleted_at                      DateTime?
+
+  employee Employee @relation(fields: [employee_id], references: [employee_id], onDelete: Cascade)
+
+  @@map("employee_leave_applications")
+}
+
+model PayrollLog {
+  payroll_log_id   String     @id @default(uuid())
+  employee_id      String
+  amount           Float
+  payroll_date     DateTime
+
+  pdf_uri          String?
+
+  created_at       DateTime   @default(now())
+  updated_at       DateTime   @updatedAt
+  deleted_at       DateTime?
+
+  employee Employee @relation(fields: [employee_id], references: [employee_id], onDelete: Cascade)
+  payroll_details PayrollDetail[]
+
+  @@map("payroll_logs")
+}
+
+enum PayrollDetailType {
+  DEDUCTION
+  ALLOWANCE
+  BASE_SALARY
+}
+
+model PayrollDetail {
+  payroll_detail_id   String     @id @default(uuid())
+  payroll_log_id      String
+  description        String
+  type PayrollDetailType
+  amount             Float
+
+  created_at         DateTime   @default(now())
+  updated_at         DateTime   @updatedAt
+  deleted_at         DateTime?
+
+  payroll_log PayrollLog @relation(fields: [payroll_log_id], references: [payroll_log_id], onDelete: Cascade)
+
+  @@map("payroll_details")
+
+}
+
+model AttendanceLog {
+  attendance_log_id   String     @id @default(uuid())
+  employee_id         String
+  log_type            Int        // 0: check-in, 1: check-out
+  timestamp           DateTime   @default(now())
+  created_at          DateTime   @default(now())
+  updated_at          DateTime   @updatedAt
+  deleted_at          DateTime?
+
+  employee Employee @relation(fields: [employee_id], references: [employee_id], onDelete: Cascade)
+
+  @@map("attendance_logs")
+}
+
+model CompanyWorkingDay {
+  company_working_day_id   String  @id @default(uuid())
+  company_id               String
+  
+  monday        Boolean   @default(true)
+  tuesday       Boolean   @default(true)
+  wednesday     Boolean   @default(true)
+  thursday      Boolean   @default(true)
+  friday        Boolean   @default(true)
+  saturday      Boolean   @default(false)
+  sunday        Boolean   @default(false)
+
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+
+  company Company @relation(fields: [company_id], references: [company_id], onDelete: Cascade)
+}
+
+model CompanyCustomHoliday {
+  company_custom_holiday_id   String   @id @default(uuid())
+  company_id                  String
+  start_date                  DateTime @db.Date
+  end_date                    DateTime @db.Date
+  description                 String
+
+  created_at                  DateTime @default(now())
+  updated_at                  DateTime @updatedAt
+  deleted_at                  DateTime?
+
+  company Company @relation(fields: [company_id], references: [company_id], onDelete: Cascade)
 }

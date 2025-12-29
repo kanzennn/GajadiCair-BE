@@ -1,0 +1,19 @@
+{
+    "sqltools.connections": [
+        {
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "103.197.191.50",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "name": "gajadicair",
+            "database": "gajadicair",
+            "username": "root",
+            "password": ""
+        }
+    ],
+    "eslint.validate": ["typescript"],
+    "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": "explicit"
+    }
+}

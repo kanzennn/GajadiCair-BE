@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Slip Payroll</title>
+    <style>
+      body { font-family: Arial, Helvetica, sans-serif; background:#f6f7fb; margin:0; padding:0; color:#111; }
+      .container { max-width: 680px; margin: 0 auto; padding: 24px 12px; }
+      .card { background:#fff; border:1px solid #e7e9f0; border-radius:12px; overflow:hidden; }
+      .header { padding: 18px 20px; background:#0b5fff; color:#fff; }
+      .header h1 { margin:0; font-size: 18px; }
+      .header p { margin:6px 0 0; font-size: 13px; opacity: .95; }
+      .content { padding: 18px 20px; }
+      .meta { font-size: 13px; color:#444; line-height: 1.6; margin-bottom: 14px; }
+      .pill { display:inline-block; background:#eef4ff; color:#0b5fff; border-radius:999px; padding: 4px 10px; font-size: 12px; font-weight:600; }
+      table { width:100%; border-collapse: collapse; margin-top: 10px; }
+      th, td { padding: 10px 10px; border-bottom: 1px solid #eef0f6; font-size: 13px; vertical-align: top; }
+      th { text-align:left; background:#fafbff; color:#333; font-weight:700; }
+      .right { text-align:right; }
+      .section-title { margin: 16px 0 8px; font-size: 14px; font-weight: 700; color:#111; }
+      .summary-box { background:#fafbff; border:1px solid #eef0f6; border-radius:12px; padding: 12px 12px; margin-top: 10px; }
+      .summary-row { display:flex; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+      .summary-row strong { font-size: 14px; }
+      .muted { color:#666; }
+      .pos { color:#0b7a2a; font-weight:700; }
+      .neg { color:#b00020; font-weight:700; }
+      .footer { padding: 14px 20px; background:#fafafa; font-size: 12px; color:#666; line-height: 1.5; }
+      .divider { height: 1px; background:#eef0f6; margin: 14px 0; }
+      .badge { display:inline-block; border:1px solid #e7e9f0; border-radius: 10px; padding: 6px 10px; font-size: 12px; color:#444; background:#fff; }
+      .two-col { display:flex; gap: 10px; flex-wrap: wrap; }
+      .two-col > div { flex: 1; min-width: 240px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <div class="header">
+          <h1>Payroll Notification</h1>
+          <p>{{company_name}} • Periode {{period.start}} s/d {{period.end}}</p>
+        </div>
+
+        <div class="content">
+          <div class="meta">
+            <div><strong>Nama Karyawan:</strong> {{employee_name}}</div>
+            <div><strong>Tanggal Payroll:</strong> {{payroll_date}}</div>
+            <div style="margin-top:8px;">
+              <span class="pill">Take Home Pay: {{take_home_pay}}</span>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="summary-box">
+              <div class="summary-row">
+                <span class="muted">Base Salary</span>
+                <span><strong>{{base_salary}}</strong></span>
+              </div>
+              <div class="summary-row">
+                <span class="muted">Total Allowance</span>
+                <span class="pos">+ {{allowance.total}}</span>
+              </div>
+              <div class="summary-row">
+                <span class="muted">Total Deduction</span>
+                <span class="neg">- {{deduction.total}}</span>
+              </div>
+              <div class="divider"></div>
+              <div class="summary-row">
+                <span><strong>Take Home Pay</strong></span>
+                <span><strong>{{take_home_pay}}</strong></span>
+              </div>
+            </div>
+
+            <div class="summary-box">
+              <div class="section-title" style="margin-top:0;">Attendance Summary</div>
+              <div class="summary-row">
+                <span class="muted">Absent Days</span>
+                <span class="badge">{{attendance.absent_days}}</span>
+              </div>
+              <div class="summary-row">
+                <span class="muted">Late Minutes</span>
+                <span class="badge">{{attendance.late_minutes}}</span>
+              </div>
+              <div class="summary-row">
+                <span class="muted">Catatan</span>
+                <span class="muted" style="text-align:right;">
+                  Detail payroll di bawah
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-title">Allowance Details</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Nama</th>
+                <th class="right">Nominal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{#if allowance.details}}
+                {{#each allowance.details}}
+                  <tr>
+                    <td>{{name}}</td>
+                    <td class="right pos">+ {{amount}}</td>
+                  </tr>
+                {{/each}}
+              {{else}}
+                <tr>
+                  <td colspan="2" class="muted">Tidak ada allowance</td>
+                </tr>
+              {{/if}}
+            </tbody>
+          </table>
+
+          <div class="section-title">Deduction Details</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Nama</th>
+                <th>Type</th>
+                <th class="right">Nominal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{#if deduction.details}}
+                {{#each deduction.details}}
+                  <tr>
+                    <td>{{name}}</td>
+                    <td class="muted">{{type}}</td>
+                    <td class="right neg">- {{amount}}</td>
+                  </tr>
+                {{/each}}
+              {{else}}
+                <tr>
+                  <td colspan="3" class="muted">Tidak ada deduction</td>
+                </tr>
+              {{/if}}
+            </tbody>
+          </table>
+
+          <div class="divider"></div>
+
+          <div class="meta muted">
+            Jika ada ketidaksesuaian, silakan hubungi admin payroll perusahaan Anda.
+          </div>
+        </div>
+
+        <div class="footer">
+          Email ini dibuat otomatis oleh sistem payroll {{company_name}}.<br />
+          Mohon jangan membalas email ini.
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

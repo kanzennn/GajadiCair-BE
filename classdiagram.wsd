@@ -1,0 +1,157 @@
+@startuml
+skinparam classAttributeIconSize 0
+
+' ===== ENUMS =====
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LEAVE
+  SICK
+}
+
+enum LogType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum LeaveApplicationType {
+  LEAVE
+  SICK
+}
+
+' ===== ENTITIES =====
+class Company {
+  +company_id: String
+  +name: String
+  +company_identifier: String
+
+  +attendance_open_time: Time?
+  +attendance_close_time: Time?
+  +work_start_time: Time?
+  +attendance_tolerance_minutes: Int
+  +minimum_hours_per_day: Int?
+
+  +attendance_location_enabled: Boolean
+  +attendance_radius_meters: Int?
+  +attendance_location: GeoPoint?
+
+  +recognize_with_gesture: Boolean
+}
+
+class CompanyWorkingDay {
+  +company_working_day_id: String
+  +monday: Boolean
+  +tuesday: Boolean
+  +wednesday: Boolean
+  +thursday: Boolean
+  +friday: Boolean
+  +saturday: Boolean
+  +sunday: Boolean
+
+  +isWorkingDay(date): Boolean
+}
+
+class CompanyCustomHoliday {
+  +company_custom_holiday_id: String
+  +start_date: Date
+  +end_date: Date
+  +description: String
+
+  +isHoliday(date): Boolean
+}
+
+class Employee {
+  +employee_id: String
+  +company_id: String
+  +name: String
+  +is_active: Boolean
+  +is_face_enrolled: Boolean
+}
+
+class EmployeeAttendance {
+  +employee_attendance_id: String
+  +employee_id: String
+  +attendance_date: Date
+
+  +status: AttendanceStatus
+  +absent_reason: String?
+
+  +check_in_time: DateTime?
+  +check_in_location: GeoPoint?
+  +check_out_time: DateTime?
+  +check_out_location: GeoPoint?
+
+  +is_late: Boolean
+  +late_minutes: Int?
+  +total_work_hours: Float?
+
+  +markCheckIn(time, location)
+  +markCheckOut(time, location)
+  +computeLateMinutes(work_start_time, tolerance_minutes)
+  +computeTotalWorkHours()
+}
+
+class AttendanceLog {
+  +attendance_log_id: String
+  +employee_id: String
+  +log_type: LogType
+  +timestamp: DateTime
+}
+
+class EmployeeLeaveApplication {
+  +employee_leave_application_id: String
+  +employee_id: String
+  +type: LeaveApplicationType
+  +start_date: Date
+  +end_date: Date
+  +status: Int  '0 pending 1 approved 2 rejected
+
+  +covers(date): Boolean
+  +isApproved(): Boolean
+}
+
+' ===== SERVICES (USE CASE) =====
+class AttendanceService {
+  +checkIn(employeeId, time, location, gesture?): EmployeeAttendance
+  +checkOut(employeeId, time, location): EmployeeAttendance
+  +getToday(employeeId, date): EmployeeAttendance?
+  +buildDailyStatus(employeeId, date): AttendanceStatus
+}
+
+class AttendancePolicy {
+  +validateWorkingDay(company, date, workingDay, holidays)
+  +validateOpenWindow(company, time)
+  +validateLocation(company, location)
+  +evaluateLate(company, checkInTime): (isLate, lateMinutes)
+}
+
+' ===== RELATIONSHIPS =====
+Company "1" o-- "1" CompanyWorkingDay
+Company "1" o-- "0..*" CompanyCustomHoliday
+Company "1" o-- "0..*" Employee
+
+Employee "1" o-- "0..*" EmployeeAttendance
+Employee "1" o-- "0..*" AttendanceLog
+Employee "1" o-- "0..*" EmployeeLeaveApplication
+
+AttendanceService ..> EmployeeAttendance
+AttendanceService ..> AttendanceLog
+AttendanceService ..> AttendancePolicy
+AttendanceService ..> Company
+AttendancePolicy ..> CompanyWorkingDay
+AttendancePolicy ..> CompanyCustomHoliday
+
+note right of EmployeeAttendance
+Unique constraint:
+(employee_id, attendance_date)
+end note
+
+note bottom of AttendanceService
+Flow:
+- checkIn: create/update EmployeeAttendance(today)
+- create AttendanceLog(CHECK_IN)
+- compute late + store late_minutes
+- checkOut: update record + compute total_work_hours
+end note
+
+@enduml
