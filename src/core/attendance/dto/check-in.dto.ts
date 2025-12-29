@@ -4,7 +4,6 @@ import {
   ArrayMinSize,
   ArrayNotEmpty,
   IsArray,
-  IsEnum,
   IsLatitude,
   IsLongitude,
   IsNumber,

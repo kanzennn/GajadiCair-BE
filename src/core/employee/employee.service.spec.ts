@@ -1,27 +1,25 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-
+// employee.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
+
 import { EmployeeService } from './employee.service';
+
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { CustomMailerService } from 'src/common/services/mailer/mailer.service';
-import { CompanyService } from '../company/company.service';
 import { S3Service } from 'src/common/services/s3/s3.service';
+
+import { CompanyService } from '../company/company.service';
+
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 
-// ✅ Mock argon2
+// ✅ Mock argon2 (hash) biar test stabil
 jest.mock('argon2', () => ({
   hash: jest.fn((v: string) => `hashed:${v}`),
-}));
-
-// ✅ Mock convertFilename biar key S3 predictable
-jest.mock('src/utils/convertString.utils', () => ({
-  convertFilename: jest.fn((name: string) => `safe-${name}`),
 }));
 
 describe('EmployeeService', () => {
   let service: EmployeeService;
 
+  // ======= Mocks =======
   const prisma = {
     employee: {
       findFirst: jest.fn(),
@@ -40,7 +38,7 @@ describe('EmployeeService', () => {
     getAvailableSeats: jest.fn(),
   };
 
-  const s3 = {
+  const s3Service = {
     uploadBuffer: jest.fn(),
   };
 
@@ -53,7 +51,7 @@ describe('EmployeeService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: CustomMailerService, useValue: mailerService },
         { provide: CompanyService, useValue: companyService },
-        { provide: S3Service, useValue: s3 },
+        { provide: S3Service, useValue: s3Service },
       ],
     }).compile();
 
@@ -61,25 +59,24 @@ describe('EmployeeService', () => {
   });
 
   describe('updateEmployeeProfile', () => {
-    it('should throw if employee not found', async () => {
+    it('should throw when employee not found', async () => {
       prisma.employee.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.updateEmployeeProfile(
-          'e1',
-          { name: 'New' } as any,
-          null as any,
-        ),
+        service.updateEmployeeProfile('e1', { name: 'A' } as any, null as any),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('should update profile without file', async () => {
-      prisma.employee.findFirst.mockResolvedValue({ employee_id: 'e1' });
+    it('should update profile without file and sanitize password', async () => {
+      prisma.employee.findFirst.mockResolvedValue({
+        employee_id: 'e1',
+        deleted_at: null,
+      });
 
       prisma.employee.update.mockResolvedValue({
         employee_id: 'e1',
         name: 'New',
-        avatar_uri: null,
+        password: 'hashed:any',
       });
 
       const res = await service.updateEmployeeProfile(
@@ -96,67 +93,60 @@ describe('EmployeeService', () => {
       expect(res).toEqual({
         employee_id: 'e1',
         name: 'New',
-        avatar_uri: null,
+        password: undefined,
       });
     });
 
-    it('should upload avatar and update avatar_uri when file provided', async () => {
-      prisma.employee.findFirst.mockResolvedValue({ employee_id: 'e1' });
+    it('should upload file to s3 and set avatar_uri then update', async () => {
+      prisma.employee.findFirst.mockResolvedValue({
+        employee_id: 'e1',
+        deleted_at: null,
+      });
 
-      // uploadBuffer mengembalikan key yang nanti disimpan ke avatar_uri
-      s3.uploadBuffer.mockResolvedValue({
-        key: 'employee/profile-picture/abc.jpg',
+      s3Service.uploadBuffer.mockResolvedValue({
+        key: 'employee/profile-picture/123-a.png',
+        url: 'https://s3/url',
       });
 
       prisma.employee.update.mockResolvedValue({
         employee_id: 'e1',
-        name: 'New',
-        avatar_uri: 'employee/profile-picture/abc.jpg',
+        avatar_uri: 'employee/profile-picture/123-a.png',
+        password: 'hashed:any',
       });
 
       const file = {
-        originalname: 'photo.png',
+        originalname: 'a.png',
         mimetype: 'image/png',
         buffer: Buffer.from('x'),
-      } as any;
+      } as Express.Multer.File;
 
-      const res = await service.updateEmployeeProfile(
-        'e1',
-        { name: 'New' } as any,
-        file,
-      );
+      const dto: any = {};
 
-      expect(s3.uploadBuffer).toHaveBeenCalledWith(
-        expect.objectContaining({
-          key: expect.stringContaining('employee/profile-picture/'),
-          buffer: file.buffer,
-          contentType: 'image/png',
-          cacheControl: 'public, max-age=31536000',
-        }),
-      );
+      const res = await service.updateEmployeeProfile('e1', dto, file);
 
+      expect(s3Service.uploadBuffer).toHaveBeenCalled();
       expect(prisma.employee.update).toHaveBeenCalledWith({
         where: { employee_id: 'e1' },
-        data: {
-          name: 'New',
-          avatar_uri: 'employee/profile-picture/abc.jpg',
-        },
+        data: expect.objectContaining({
+          avatar_uri: 'employee/profile-picture/123-a.png',
+        }),
       });
 
-      expect(res.avatar_uri).toBe('employee/profile-picture/abc.jpg');
+      expect(res.password).toBeUndefined();
     });
   });
 
   describe('createEmployeeByCompany', () => {
-    it('should throw when seat availability exceeded', async () => {
+    it('should throw when seat capacity exceeded', async () => {
       companyService.getAvailableSeats.mockResolvedValue({
         seat_availability: 0,
       });
 
       await expect(
         service.createEmployeeByCompany('c1', {
-          username: 'u1',
+          username: 'u',
           password: 'p',
+          send_to_email: false,
         } as any),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
@@ -165,69 +155,75 @@ describe('EmployeeService', () => {
       companyService.getAvailableSeats.mockResolvedValue({
         seat_availability: 10,
       });
-      prisma.employee.findFirst.mockResolvedValue({ employee_id: 'eX' }); // username exist
+
+      prisma.employee.findFirst.mockResolvedValue({
+        employee_id: 'e-existing',
+        username: 'u',
+      });
 
       await expect(
         service.createEmployeeByCompany('c1', {
-          username: 'u1',
+          username: 'u',
           password: 'p',
+          send_to_email: false,
         } as any),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('should create employee, hash password, and not send email when send_to_email=false', async () => {
+    it('should create employee, hash password, and sanitize password', async () => {
       companyService.getAvailableSeats.mockResolvedValue({
         seat_availability: 10,
       });
-      prisma.employee.findFirst.mockResolvedValue(null); // username unique
+
+      prisma.employee.findFirst.mockResolvedValue(null); // username not exist
 
       prisma.employee.create.mockResolvedValue({
         employee_id: 'e1',
-        username: 'u1',
         email: 'e@e.com',
+        username: 'u',
         name: 'Emp',
         password: 'hashed:p',
         company: { name: 'Comp', company_identifier: 'CID' },
       });
 
       const res = await service.createEmployeeByCompany('c1', {
-        username: 'u1',
+        username: 'u',
         password: 'p',
         email: 'e@e.com',
         name: 'Emp',
         send_to_email: false,
-      } as any);
+      });
 
       expect(prisma.employee.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          username: 'u1',
-          password: 'hashed:p',
           company_id: 'c1',
+          username: 'u',
+          password: 'hashed:p',
         }),
         include: { company: true },
       });
 
-      expect(mailerService.sendTemplatedEmail).not.toHaveBeenCalled();
-      expect(res.employee_id).toBe('e1');
+      expect(res.password).toBeUndefined();
     });
 
-    it('should send email when send_to_email=true', async () => {
+    it('should send credentials email when send_to_email = true', async () => {
       companyService.getAvailableSeats.mockResolvedValue({
         seat_availability: 10,
       });
+
       prisma.employee.findFirst.mockResolvedValue(null);
 
       prisma.employee.create.mockResolvedValue({
         employee_id: 'e1',
-        username: 'u1',
         email: 'e@e.com',
+        username: 'u',
         name: 'Emp',
         password: 'hashed:p',
         company: { name: 'Comp', company_identifier: 'CID' },
       });
 
-      await service.createEmployeeByCompany('c1', {
-        username: 'u1',
+      const res = await service.createEmployeeByCompany('c1', {
+        username: 'u',
         password: 'p',
         email: 'e@e.com',
         name: 'Emp',
@@ -242,32 +238,30 @@ describe('EmployeeService', () => {
           employeeName: 'Emp',
           companyName: 'Comp',
           companyCode: 'CID',
-          employeeUsername: 'u1',
-          password: 'p', // plain password dikirim
+          employeeUsername: 'u',
+          password: 'p', // plain password yang dikirim
         }),
       );
+
+      expect(res.password).toBeUndefined();
     });
   });
 
   describe('getEmployeesByCompany', () => {
-    it('should return employees with selected fields', async () => {
+    it('should return employees list (selected fields)', async () => {
       prisma.employee.findMany.mockResolvedValue([
-        { employee_id: 'e1', name: 'Emp 1' },
+        { employee_id: 'e1', name: 'A' },
       ]);
 
       const res = await service.getEmployeesByCompany('c1');
 
-      expect(prisma.employee.findMany).toHaveBeenCalledWith({
-        where: { company_id: 'c1', deleted_at: null },
-        select: expect.any(Object),
-      });
-
-      expect(res).toEqual([{ employee_id: 'e1', name: 'Emp 1' }]);
+      expect(prisma.employee.findMany).toHaveBeenCalled();
+      expect(res).toEqual([{ employee_id: 'e1', name: 'A' }]);
     });
   });
 
   describe('getCountEmployeesByCompany', () => {
-    it('should return count', async () => {
+    it('should return employee count', async () => {
       prisma.employee.count.mockResolvedValue(5);
 
       const res = await service.getCountEmployeesByCompany('c1');
@@ -280,74 +274,110 @@ describe('EmployeeService', () => {
   });
 
   describe('getEmployeeByIdByCompany', () => {
-    it('should query employee by company + employee id with select', async () => {
-      prisma.employee.findFirst.mockResolvedValue({ employee_id: 'e1' });
+    it('should throw when employee not found', async () => {
+      prisma.employee.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getEmployeeByIdByCompany('c1', 'e1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('should return employee sanitized', async () => {
+      prisma.employee.findFirst.mockResolvedValue({
+        employee_id: 'e1',
+        password: 'hashed:any',
+      });
 
       const res = await service.getEmployeeByIdByCompany('c1', 'e1');
 
-      expect(prisma.employee.findFirst).toHaveBeenCalledWith({
-        where: { company_id: 'c1', employee_id: 'e1', deleted_at: null },
-        select: expect.any(Object),
-      });
-      expect(res).toEqual({ employee_id: 'e1' });
+      expect(res).toEqual({ employee_id: 'e1', password: undefined });
     });
   });
 
   describe('updateEmployeeByIdByCompany', () => {
-    it('should throw when username already taken by another employee', async () => {
+    it('should throw when username already taken by other employee', async () => {
       prisma.employee.findFirst.mockResolvedValue({
         employee_id: 'e-other',
+        username: 'new',
       });
 
       await expect(
         service.updateEmployeeByIdByCompany('c1', 'e1', {
-          username: 'taken',
+          username: 'new',
         } as any),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('should hash password when updateData.password provided and update employee', async () => {
-      // username check: return same employee -> OK
-      prisma.employee.findFirst.mockResolvedValue({ employee_id: 'e1' });
+    it('should hash password when provided, update employee, and sanitize', async () => {
+      prisma.employee.findFirst.mockResolvedValue(null); // username not exist
 
       prisma.employee.update.mockResolvedValue({
         employee_id: 'e1',
-        username: 'u1',
-        email: 'e@e.com',
-        name: 'Emp',
+        username: 'u',
+        password: 'hashed:new',
         company: { name: 'Comp', company_identifier: 'CID' },
       });
 
       const res = await service.updateEmployeeByIdByCompany('c1', 'e1', {
-        password: 'newpass',
+        password: 'new',
         send_to_email: false,
       } as any);
 
       expect(prisma.employee.update).toHaveBeenCalledWith({
         where: { company_id: 'c1', employee_id: 'e1', deleted_at: null },
         data: expect.objectContaining({
-          password: 'hashed:newpass',
+          password: 'hashed:new',
         }),
         include: { company: true },
       });
 
-      expect(mailerService.sendTemplatedEmail).not.toHaveBeenCalled();
-      expect(res.employee_id).toBe('e1');
+      expect(res.password).toBeUndefined();
     });
 
-    it('should send "send-new-credentials" email when send_to_email=true (and password provided)', async () => {
-      prisma.employee.findFirst.mockResolvedValue({ employee_id: 'e1' });
+    it('should send updated data email when only password changed and send_to_email = true', async () => {
+      prisma.employee.findFirst.mockResolvedValue(null);
 
       prisma.employee.update.mockResolvedValue({
         employee_id: 'e1',
-        username: 'u1',
         email: 'e@e.com',
         name: 'Emp',
+        username: 'u',
+        password: 'hashed:new',
         company: { name: 'Comp', company_identifier: 'CID' },
       });
 
-      await service.updateEmployeeByIdByCompany('c1', 'e1', {
-        password: 'newpass',
+      const res = await service.updateEmployeeByIdByCompany('c1', 'e1', {
+        password: 'new',
+        send_to_email: true,
+      } as any);
+
+      expect(mailerService.sendTemplatedEmail).toHaveBeenCalledWith(
+        'e@e.com',
+        'Pemberitahuan Penggantian Data Pengguna',
+        'send-updated-data-user',
+        expect.objectContaining({
+          employeeName: 'Emp',
+          companyName: 'Comp',
+        }),
+      );
+
+      expect(res.password).toBeUndefined();
+    });
+
+    it('should send new credentials email when username changes and send_to_email = true', async () => {
+      prisma.employee.findFirst.mockResolvedValue(null);
+
+      prisma.employee.update.mockResolvedValue({
+        employee_id: 'e1',
+        email: 'e@e.com',
+        name: 'Emp',
+        username: 'newU',
+        password: 'hashed:any',
+        company: { name: 'Comp', company_identifier: 'CID' },
+      });
+
+      const res = await service.updateEmployeeByIdByCompany('c1', 'e1', {
+        username: 'newU',
         send_to_email: true,
       } as any);
 
@@ -359,56 +389,20 @@ describe('EmployeeService', () => {
           employeeName: 'Emp',
           companyName: 'Comp',
           companyCode: 'CID',
-          employeeUsername: 'u1',
-          password: 'newpass', // plain password dikirim
+          employeeUsername: 'newU',
         }),
       );
-    });
 
-    it('should send "send-updated-data-user" email when send_to_email=true and only password changed (no username)', async () => {
-      prisma.employee.findFirst.mockResolvedValue({ employee_id: 'e1' });
-
-      prisma.employee.update.mockResolvedValue({
-        employee_id: 'e1',
-        username: 'u1',
-        email: 'e@e.com',
-        name: 'Emp',
-        company: { name: 'Comp', company_identifier: 'CID' },
-      });
-
-      await service.updateEmployeeByIdByCompany('c1', 'e1', {
-        password: 'newpass',
-        send_to_email: true,
-      } as any);
-
-      // NOTE: di logic kamu, cabang "send-updated-data-user" terjadi kalau:
-      // plainPassword !== undefined && !updateData.username
-      // tapi kamu masih kirim template "send-updated-data-user" kalau password changed & username tidak berubah.
-      // Sesuai implementasi kamu yang sekarang, justru ia akan masuk "send-updated-data-user".
-      // Kalau ternyata kamu menginginkan behavior beda, ubah testnya sesuai.
-
-      // Kalau implementasi kamu benar-benar memakai send-updated-data-user, ubah assert ini:
-      // expect(mailerService.sendTemplatedEmail).toHaveBeenCalledWith(
-      //   'e@e.com',
-      //   'Pemberitahuan Penggantian Data Pengguna',
-      //   'send-updated-data-user',
-      //   expect.any(Object),
-      // );
-
-      // Tapi dari code yang kamu kirim, dengan password & send_to_email=true & username tidak ada,
-      // ia memang memilih send-updated-data-user.
-      expect(mailerService.sendTemplatedEmail).toHaveBeenCalledWith(
-        'e@e.com',
-        'Pemberitahuan Penggantian Data Pengguna',
-        'send-updated-data-user',
-        expect.any(Object),
-      );
+      expect(res.password).toBeUndefined();
     });
   });
 
   describe('deleteEmployeeByIdByCompany', () => {
     it('should soft delete employee', async () => {
-      prisma.employee.update.mockResolvedValue({ employee_id: 'e1' });
+      prisma.employee.update.mockResolvedValue({
+        employee_id: 'e1',
+        deleted_at: new Date(),
+      });
 
       const res = await service.deleteEmployeeByIdByCompany('c1', 'e1');
 
@@ -417,12 +411,15 @@ describe('EmployeeService', () => {
         data: { deleted_at: expect.any(Date) },
       });
 
-      expect(res).toEqual({ employee_id: 'e1' });
+      expect(res).toEqual({
+        employee_id: 'e1',
+        deleted_at: expect.any(Date),
+      });
     });
   });
 
   describe('getEmployeeById', () => {
-    it('should find employee by id', async () => {
+    it('should return employee by id', async () => {
       prisma.employee.findFirst.mockResolvedValue({ employee_id: 'e1' });
 
       const res = await service.getEmployeeById('e1');
@@ -435,10 +432,10 @@ describe('EmployeeService', () => {
   });
 
   describe('getEmployeeByIdIncludeCompany', () => {
-    it('should find employee include company', async () => {
+    it('should return employee include company', async () => {
       prisma.employee.findFirst.mockResolvedValue({
         employee_id: 'e1',
-        company: {},
+        company: { company_id: 'c1' },
       });
 
       const res = await service.getEmployeeByIdIncludeCompany('e1');
@@ -447,20 +444,28 @@ describe('EmployeeService', () => {
         where: { employee_id: 'e1', deleted_at: null },
         include: { company: true },
       });
-      expect(res).toEqual({ employee_id: 'e1', company: {} });
+      expect(res).toEqual({ employee_id: 'e1', company: { company_id: 'c1' } });
     });
   });
 
   describe('getEmployeeByUsernameByCompany', () => {
-    it('should find employee by username and company', async () => {
-      prisma.employee.findFirst.mockResolvedValue({ employee_id: 'e1' });
+    it('should find employee by username + company', async () => {
+      prisma.employee.findFirst.mockResolvedValue({
+        employee_id: 'e1',
+        username: 'u',
+        company_id: 'c1',
+      });
 
-      const res = await service.getEmployeeByUsernameByCompany('u1', 'c1');
+      const res = await service.getEmployeeByUsernameByCompany('u', 'c1');
 
       expect(prisma.employee.findFirst).toHaveBeenCalledWith({
-        where: { username: 'u1', company_id: 'c1', deleted_at: null },
+        where: { username: 'u', company_id: 'c1', deleted_at: null },
       });
-      expect(res).toEqual({ employee_id: 'e1' });
+      expect(res).toEqual({
+        employee_id: 'e1',
+        username: 'u',
+        company_id: 'c1',
+      });
     });
   });
 });

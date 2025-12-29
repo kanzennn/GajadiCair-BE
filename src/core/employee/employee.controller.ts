@@ -13,18 +13,25 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { EmployeeService } from './employee.service';
-import { CompanyAuthGuard } from '../auth/guards/company.guard';
-import { CompanyService } from '../company/company.service';
-import { BankService } from '../bank/bank.service';
-import { successResponse } from 'src/utils/response.utils';
-import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
-import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
-import { UpdateEmployeeDto } from './dto/update-employee.dto';
-import { CreateEmployeeDto } from './dto/create-employee.dto';
-import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
+
+import { successResponse } from 'src/utils/response.utils';
+
+import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
+import { CompanyAuthGuard } from '../auth/guards/company.guard';
+import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
+
+import { BankService } from '../bank/bank.service';
+import { CompanyService } from '../company/company.service';
+import { SubscriptionService } from '../subscription/subscription.service';
+
+import { CreateEmployeeDto } from './dto/create-employee.dto';
+import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateProfileEmployeeDto } from './dto/update-profile-employee.dto';
+
+import { EmployeeService } from './employee.service';
 
 @Controller({ version: '1' })
 export class EmployeeController {
@@ -32,7 +39,10 @@ export class EmployeeController {
     private readonly companyService: CompanyService,
     private readonly employeeService: EmployeeService,
     private readonly bankService: BankService,
+    private readonly subscriptionService: SubscriptionService,
   ) {}
+
+  // ===================== Employee =====================
 
   @Get('employee/profile')
   @HttpCode(200)
@@ -40,9 +50,18 @@ export class EmployeeController {
   async getEmployeeProfile(
     @Req() req: Request & { user: TokenPayloadInterface },
   ) {
+    const employee = await this.employeeService.getEmployeeById(req.user.sub);
+    if (!employee) throw new BadRequestException('Employee not found');
+
+    // NOTE: pastikan `getSubscriptionStatus` memang butuh employee_id
+    // kalau butuh company_id, ambil dulu employee include company lalu pakai company_id
+    const subscription_status =
+      await this.subscriptionService.getSubscriptionStatus(employee.company_id);
+
     return successResponse(
       {
-        ...(await this.employeeService.getEmployeeById(req.user.sub)),
+        ...employee,
+        subscription_status,
         password: undefined,
       },
       'Profile fetched successfully',
@@ -73,6 +92,8 @@ export class EmployeeController {
     );
   }
 
+  // ===================== Company -> Employees =====================
+
   @Post('company/employee')
   @UseGuards(CompanyAuthGuard)
   async createEmployee(
@@ -81,29 +102,27 @@ export class EmployeeController {
   ) {
     const company_id = req.user.sub;
 
-    const bankExist = await this.bankService.findOne(dto.bank_id);
+    const bank = await this.bankService.findOne(dto.bank_id);
+    if (!bank) throw new BadRequestException('Bank not found');
 
-    if (!bankExist) {
-      throw new BadRequestException('Bank not found');
-    }
-
-    const newEmployee = await this.employeeService.createEmployeeByCompany(
+    const employee = await this.employeeService.createEmployeeByCompany(
       company_id,
       dto,
     );
 
-    return successResponse(newEmployee, 'Employee created successfully', 201);
+    return successResponse(employee, 'Employee created successfully', 201);
   }
 
   @Get('company/employee')
   @UseGuards(CompanyAuthGuard)
   async getEmployees(@Req() req: Request & { user: TokenPayloadInterface }) {
     const company_id = req.user.sub;
-    const employees =
-      await this.employeeService.getEmployeesByCompany(company_id);
 
-    const availableSeats =
-      await this.companyService.getAvailableSeats(company_id);
+    const [employees, availableSeats] = await Promise.all([
+      this.employeeService.getEmployeesByCompany(company_id),
+      this.companyService.getAvailableSeats(company_id),
+    ]);
+
     return successResponse(
       { employees, availableSeats },
       'Employees retrieved successfully',
@@ -117,14 +136,11 @@ export class EmployeeController {
     @Param('employee_id') employee_id: string,
   ) {
     const company_id = req.user.sub;
+
     const employee = await this.employeeService.getEmployeeByIdByCompany(
       company_id,
       employee_id,
     );
-
-    if (!employee) {
-      throw new BadRequestException('Employee not found');
-    }
 
     return successResponse(employee, 'Employee retrieved successfully');
   }
@@ -137,30 +153,25 @@ export class EmployeeController {
     @Body() dto: UpdateEmployeeDto,
   ) {
     const company_id = req.user.sub;
-    const employee = await this.employeeService.getEmployeeByIdByCompany(
+
+    // ensure employee exists (service will throw if not found)
+    await this.employeeService.getEmployeeByIdByCompany(
       company_id,
       employee_id,
     );
 
-    if (!employee) {
-      throw new BadRequestException('Employee not found');
-    }
-
     if (dto.bank_id) {
-      const bankExist = await this.bankService.findOne(dto.bank_id);
-
-      if (!bankExist) {
-        throw new BadRequestException('Bank not found');
-      }
+      const bank = await this.bankService.findOne(dto.bank_id);
+      if (!bank) throw new BadRequestException('Bank not found');
     }
 
-    const data = await this.employeeService.updateEmployeeByIdByCompany(
+    const updated = await this.employeeService.updateEmployeeByIdByCompany(
       company_id,
       employee_id,
       dto,
     );
 
-    return successResponse(data, 'Employee updated successfully');
+    return successResponse(updated, 'Employee updated successfully');
   }
 
   @Delete('company/employee/:employee_id')
@@ -170,24 +181,20 @@ export class EmployeeController {
     @Param('employee_id') employee_id: string,
   ) {
     const company_id = req.user.sub;
-    const employee = await this.employeeService.getEmployeeByIdByCompany(
+
+    // ensure employee exists (service will throw if not found)
+    await this.employeeService.getEmployeeByIdByCompany(
       company_id,
       employee_id,
     );
 
-    if (!employee) {
-      throw new BadRequestException('Employee not found');
-    }
-
-    const data = await this.employeeService.deleteEmployeeByIdByCompany(
+    const deleted = await this.employeeService.deleteEmployeeByIdByCompany(
       company_id,
       employee_id,
     );
 
-    if (!data) {
-      throw new BadRequestException('Failed to delete employee');
-    }
+    if (!deleted) throw new BadRequestException('Failed to delete employee');
 
-    return successResponse(data, 'Employee deleted successfully');
+    return successResponse(deleted, 'Employee deleted successfully');
   }
 }

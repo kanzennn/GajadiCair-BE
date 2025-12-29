@@ -6,9 +6,10 @@ import { CustomMailerModule } from 'src/common/services/mailer/mailer.module';
 import { BankModule } from '../bank/bank.module';
 import { CompanyModule } from '../company/company.module';
 import { S3Service } from 'src/common/services/s3/s3.service';
+import { SubscriptionModule } from '../subscription/subscription.module';
 
 @Module({
-  imports: [CustomMailerModule, BankModule, CompanyModule],
+  imports: [CustomMailerModule, BankModule, CompanyModule, SubscriptionModule],
   controllers: [EmployeeController],
   providers: [EmployeeService, PrismaService, S3Service],
   exports: [EmployeeService],
