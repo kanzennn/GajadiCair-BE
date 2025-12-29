@@ -5,8 +5,8 @@ on:
     branches: [dev]
 
 jobs:
-  build-and-push:
-    name: 🐳 Build & Push Image
+  test:
+    name: ✅ Run Tests
     runs-on: ubuntu-latest
     environment: Development
 
@@ -14,13 +14,42 @@ jobs:
       - name: 📦 Checkout Code
         uses: actions/checkout@v4
 
-      - name: 🧰 Setup Bun v2
+      - name: 🧰 Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
+      - name: ⚡ Cache Bun
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
       - name: 📥 Install Dependencies
         run: bun install
+
+      # OPTIONAL: kalau test kamu butuh generate prisma client
+      - name: 🧬 Prisma Generate
+        run: bunx prisma generate
+
+      - name: ✅ Run Unit Tests
+        run: bun test
+        env:
+          NODE_ENV: test
+
+  build-and-push:
+    name: 🐳 Build & Push Image
+    runs-on: ubuntu-latest
+    environment: Development
+    needs: test
+
+    steps:
+      - name: 📦 Checkout Code
+        uses: actions/checkout@v4
 
       - name: 🔐 Docker Login
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
@@ -30,7 +59,6 @@ jobs:
 
       - name: 📤 Push Docker Image
         run: docker push kanzen523/gajadicair-api:latest
-
 
   deploy:
     name: 🚢 Deploy to VPS
@@ -95,7 +123,7 @@ jobs:
             docker exec gajadicair-api bun prisma migrate deploy
 
             echo "✅ Deployment to Development environment completed successfully!"
-      
+
       - name: 🚢 Deploy Prisma Studio
         uses: appleboy/ssh-action@master
         with:
@@ -116,4 +144,3 @@ jobs:
               -p 5555:5555 \
               kanzen523/gajadicair-api:latest \
               bunx prisma studio --hostname 0.0.0.0 --port 5555
-      
