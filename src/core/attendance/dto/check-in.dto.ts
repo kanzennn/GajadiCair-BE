@@ -44,6 +44,5 @@ export class CheckInDto {
   @IsString({ each: true })
   @Validate(HandUniqueWhenTwo)
   @Validate(SameArrayLength, ['gesture'])
-  @IsEnum(['Left', 'Right'])
   hand?: string[];
 }
