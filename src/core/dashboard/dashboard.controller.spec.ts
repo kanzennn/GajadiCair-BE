@@ -1,149 +1,129 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-
 import { Test, TestingModule } from '@nestjs/testing';
-import { ExecutionContext } from '@nestjs/common';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
-import { CompanyAuthGuard } from '../auth/guards/company.guard';
-import { successResponse } from 'src/utils/response.utils';
-
-// mock successResponse supaya predictable
-jest.mock('src/utils/response.utils', () => ({
-  successResponse: jest.fn((data, message) => ({
-    data,
-    message,
-    statusCode: 200,
-  })),
-}));
 
 describe('DashboardController', () => {
   let controller: DashboardController;
 
-  const dashboardService = {
-    getDataDashboard: jest.fn(),
-    getDataChart: jest.fn(),
+  const dashboardServiceMock = {
+    getDataDashboardByCompany: jest.fn(),
+    getDataChartByCompany: jest.fn(),
+    getDataDashboardByEmployee: jest.fn(),
+    getDataChartByEmployee: jest.fn(),
   };
+
+  const mockReqCompany = (companyId = 'company-1') =>
+    ({ user: { sub: companyId } }) as any;
+
+  const mockReqEmployee = (employeeId = 'employee-1') =>
+    ({ user: { sub: employeeId } }) as any;
 
   beforeEach(async () => {
     jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [DashboardController],
-      providers: [{ provide: DashboardService, useValue: dashboardService }],
-    })
-      // ✅ bypass auth guard
-      .overrideGuard(CompanyAuthGuard)
-      .useValue({
-        canActivate: (context: ExecutionContext) => {
-          const req = context.switchToHttp().getRequest();
-          req.user = { sub: 'company-1' }; // mock token payload
-          return true;
-        },
-      })
-      .compile();
+      providers: [
+        { provide: DashboardService, useValue: dashboardServiceMock },
+      ],
+    }).compile();
 
     controller = module.get(DashboardController);
   });
 
-  describe('getDataDashboard', () => {
-    it('should call service with companyId from token and return success response', async () => {
-      const mockResult = {
-        total_employee: 10,
-        employeePresentToday: 7,
-        employeeHasNotCheckInToday: 2,
-        employeeHasNotCheckedOut: 1,
-        attendanceLog: [],
-      };
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
 
-      dashboardService.getDataDashboard.mockResolvedValue(mockResult);
+  // ===================== COMPANY =====================
 
-      const res = await controller.getDataDashboard({
-        user: { sub: 'company-1' },
-      } as any);
+  describe('getCompanyDashboard', () => {
+    it('should return dashboard data for company', async () => {
+      const req = mockReqCompany('company-123');
+      const mocked = { total_employee: 10 };
 
-      // service dipanggil benar
-      expect(dashboardService.getDataDashboard).toHaveBeenCalledWith(
-        'company-1',
-      );
+      dashboardServiceMock.getDataDashboardByCompany.mockResolvedValue(mocked);
 
-      // response dibungkus successResponse
-      expect(successResponse).toHaveBeenCalledWith(
-        mockResult,
-        'Dashboard data retrieved successfully',
-      );
+      const res = await controller.getCompanyDashboard(req);
 
+      expect(
+        dashboardServiceMock.getDataDashboardByCompany,
+      ).toHaveBeenCalledWith('company-123');
       expect(res).toEqual({
-        data: mockResult,
-        message: 'Dashboard data retrieved successfully',
         statusCode: 200,
+        message: 'Dashboard data retrieved successfully',
+        data: mocked,
+        errors: null,
       });
     });
   });
 
-  describe('getDataChart', () => {
-    it('should call service with companyId and query dto', async () => {
-      const query = {
-        days: 7,
-      };
+  describe('getCompanyDashboardChart', () => {
+    it('should return chart data for company', async () => {
+      const req = mockReqCompany('company-123');
+      const query = { days: 7 } as any;
+      const mocked = { granularity: 'day', labels: [], series: {} };
 
-      const mockChart = {
-        granularity: 'day',
-        labels: ['2025-12-26'],
-        series: {
-          PRESENT: [5],
-          LATE: [1],
-          ABSENT: [0],
-          LEAVE: [0],
-          SICK: [0],
-          total: [6],
-        },
-        points: [],
-        range: {
-          start: '2025-12-26',
-          end: '2025-12-26',
-          days: 1,
-        },
-      };
+      dashboardServiceMock.getDataChartByCompany.mockResolvedValue(mocked);
 
-      dashboardService.getDataChart.mockResolvedValue(mockChart);
+      const res = await controller.getCompanyDashboardChart(req, query);
 
-      const res = await controller.getDataChart(
-        { user: { sub: 'company-1' } } as any,
-        query as any,
-      );
-
-      // service dipanggil dengan user.sub + query
-      expect(dashboardService.getDataChart).toHaveBeenCalledWith(
-        'company-1',
+      expect(dashboardServiceMock.getDataChartByCompany).toHaveBeenCalledWith(
+        'company-123',
         query,
       );
-
-      expect(successResponse).toHaveBeenCalledWith(
-        mockChart,
-        'Dashboard chart retrieved successfully',
-      );
-
       expect(res).toEqual({
-        data: mockChart,
-        message: 'Dashboard chart retrieved successfully',
         statusCode: 200,
+        message: 'Dashboard chart retrieved successfully',
+        data: mocked,
+        errors: null,
       });
     });
+  });
 
-    it('should pass empty query object if no query params provided', async () => {
-      dashboardService.getDataChart.mockResolvedValue({});
+  // ===================== EMPLOYEE =====================
 
-      const res = await controller.getDataChart(
-        { user: { sub: 'company-1' } } as any,
-        {} as any,
+  describe('getEmployeeDashboard', () => {
+    it('should return dashboard data for employee', async () => {
+      const req = mockReqEmployee('emp-123');
+      const mocked = { today: { status: 'PRESENT' } };
+
+      dashboardServiceMock.getDataDashboardByEmployee.mockResolvedValue(mocked);
+
+      const res = await controller.getEmployeeDashboard(req);
+
+      expect(
+        dashboardServiceMock.getDataDashboardByEmployee,
+      ).toHaveBeenCalledWith('emp-123');
+      expect(res).toEqual({
+        statusCode: 200,
+        message: 'Employee dashboard retrieved successfully',
+        data: mocked,
+        errors: null,
+      });
+    });
+  });
+
+  describe('getEmployeeDashboardChart', () => {
+    it('should return chart data for employee', async () => {
+      const req = mockReqEmployee('emp-123');
+      const query = { start_date: '2025-12-01', end_date: '2025-12-07' } as any;
+      const mocked = { granularity: 'day', labels: ['2025-12-01'], series: {} };
+
+      dashboardServiceMock.getDataChartByEmployee.mockResolvedValue(mocked);
+
+      const res = await controller.getEmployeeDashboardChart(req, query);
+
+      expect(dashboardServiceMock.getDataChartByEmployee).toHaveBeenCalledWith(
+        'emp-123',
+        query,
       );
-
-      expect(dashboardService.getDataChart).toHaveBeenCalledWith(
-        'company-1',
-        {},
-      );
-      expect(res.statusCode).toBe(200);
+      expect(res).toEqual({
+        statusCode: 200,
+        message: 'Employee dashboard chart retrieved successfully',
+        data: mocked,
+        errors: null,
+      });
     });
   });
 });

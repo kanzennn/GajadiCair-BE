@@ -23,10 +23,10 @@ export class CreateEmployeeDto {
   base_salary: number;
 
   @IsString()
-  @IsNumberString()
   bank_id: string;
 
   @IsString()
+  @IsNumberString()
   bank_account_number: string;
 
   @IsString()

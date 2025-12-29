@@ -9,11 +9,15 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { CompanyAuthGuard } from '../auth/guards/company.guard';
-import { CompanyService } from './company.service';
-import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
-import { successResponse } from 'src/utils/response.utils';
+import type { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
+
+import { CompanyAuthGuard } from '../auth/guards/company.guard';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
+
+import { successResponse } from 'src/utils/response.utils';
+
+import { CompanyService } from './company.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Controller({ version: '1' })
@@ -23,11 +27,12 @@ export class CompanyController {
 
   @Get('company/profile')
   @HttpCode(200)
-  @UseGuards(CompanyAuthGuard)
   async getProfile(@Req() req: Request & { user: TokenPayloadInterface }) {
+    const company = await this.companyService.getCompanyById(req.user.sub);
+
     return successResponse(
       {
-        ...(await this.companyService.getCompanyById(req.user.sub)),
+        ...company,
         password: undefined,
       },
       'Profile fetched successfully',
@@ -36,18 +41,18 @@ export class CompanyController {
 
   @Put('company/profile')
   @HttpCode(200)
-  @UseGuards(CompanyAuthGuard)
   @UseInterceptors(FileInterceptor('profile_picture'))
   async updateProfile(
     @Req() req: Request & { user: TokenPayloadInterface },
     @Body() dto: UpdateProfileDto,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file?: Express.Multer.File,
   ) {
     const updatedCompany = await this.companyService.updateCompanyProfile(
       req.user.sub,
       dto,
       file,
     );
+
     return successResponse(
       {
         ...updatedCompany,

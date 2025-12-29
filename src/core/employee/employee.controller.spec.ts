@@ -20,6 +20,7 @@ describe('EmployeeController', () => {
     createEmployeeByCompany: jest.fn(),
     getEmployeesByCompany: jest.fn(),
     getEmployeeByIdByCompany: jest.fn(),
+    getEmployeeByIdIncludeCompany: jest.fn(),
     updateEmployeeByIdByCompany: jest.fn(),
     deleteEmployeeByIdByCompany: jest.fn(),
   };
@@ -56,41 +57,58 @@ describe('EmployeeController', () => {
 
   describe('getEmployeeProfile', () => {
     it('should throw when employee not found', async () => {
-      employeeService.getEmployeeById.mockResolvedValue(null);
+      employeeService.getEmployeeByIdIncludeCompany.mockResolvedValue(null);
 
       await expect(
         controller.getEmployeeProfile(makeReq('e1')),
       ).rejects.toBeInstanceOf(BadRequestException);
 
-      expect(employeeService.getEmployeeById).toHaveBeenCalledWith('e1');
+      expect(
+        employeeService.getEmployeeByIdIncludeCompany,
+      ).toHaveBeenCalledWith('e1');
+      expect(subscriptionService.getSubscriptionStatus).not.toHaveBeenCalled();
     });
 
     it('should return employee profile with subscription_status and password undefined', async () => {
-      employeeService.getEmployeeById.mockResolvedValue({
+      employeeService.getEmployeeByIdIncludeCompany.mockResolvedValue({
         employee_id: 'e1',
         company_id: 'c1',
         email: 'e@e.com',
         password: 'hashed:any',
+        company: { company_id: 'c1', name: 'PT ABC' }, // include company karena include: { company: true }
       });
 
-      subscriptionService.getSubscriptionStatus.mockResolvedValue('ACTIVE');
+      // controller cuma "pass-through" apapun return-nya, jadi mock bebas
+      subscriptionService.getSubscriptionStatus.mockResolvedValue({
+        level_plan: 1,
+        plan_expiration: new Date('2030-01-01T00:00:00.000Z'),
+      });
 
       const res = await controller.getEmployeeProfile(makeReq('e1'));
+
+      expect(
+        employeeService.getEmployeeByIdIncludeCompany,
+      ).toHaveBeenCalledWith('e1');
 
       expect(subscriptionService.getSubscriptionStatus).toHaveBeenCalledWith(
         'c1',
       );
 
-      expect(res).toMatchObject({
+      expect(res).toEqual({
         statusCode: 200,
         message: 'Profile fetched successfully',
         data: {
           employee_id: 'e1',
           company_id: 'c1',
           email: 'e@e.com',
-          subscription_status: 'ACTIVE',
+          company: { company_id: 'c1', name: 'PT ABC' },
+          subscription_status: {
+            level_plan: 1,
+            plan_expiration: new Date('2030-01-01T00:00:00.000Z'),
+          },
           password: undefined,
         },
+        errors: null,
       });
     });
   });

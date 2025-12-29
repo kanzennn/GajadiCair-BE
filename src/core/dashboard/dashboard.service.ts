@@ -5,217 +5,110 @@ import { startOfDay } from 'src/utils/date.utils';
 import { ChartQueryDto } from './dto/chart-query.dto';
 
 type Granularity = 'day' | 'week' | 'month';
+
+type ChartRow = {
+  period: Date;
+  present: number;
+  late: number;
+  absent: number;
+  leave: number;
+  sick: number;
+  total: number;
+};
+
 @Injectable()
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getDataDashboardByCompany(companyId: string) {
-    const employeeCount = await this.prisma.employee.count({
-      where: {
-        company_id: companyId,
-        is_active: true,
-        deleted_at: null,
-      },
-    });
+  // ===================== COMPANY DASHBOARD =====================
 
+  async getDataDashboardByCompany(companyId: string) {
     const today = startOfDay();
 
-    const employeePresentToday = await this.prisma.employeeAttendance.count({
-      where: {
-        employee: {
-          company_id: companyId,
-          deleted_at: null,
-        },
-        attendance_date: today,
-        status: 'PRESENT',
-      },
-    });
+    const [
+      total_employee,
+      employeePresentToday,
+      employeeHasNotCheckInToday,
+      employeeHasNotCheckedOut,
+      attendanceLog,
+    ] = await Promise.all([
+      this.prisma.employee.count({
+        where: { company_id: companyId, is_active: true, deleted_at: null },
+      }),
 
-    const employeeHasNotCheckInToday = await this.prisma.employee.count({
-      where: {
-        company_id: companyId,
-        is_active: true,
-        deleted_at: null,
-        attendances: {
-          none: {
-            attendance_date: today,
-          },
-        },
-      },
-    });
-
-    const employeeHasNotCheckedOut = await this.prisma.employeeAttendance.count(
-      {
+      this.prisma.employeeAttendance.count({
         where: {
-          employee: {
-            company_id: companyId,
-          },
+          employee: { company_id: companyId, deleted_at: null },
+          attendance_date: today,
+          status: 'PRESENT',
+        },
+      }),
+
+      this.prisma.employee.count({
+        where: {
+          company_id: companyId,
+          is_active: true,
+          deleted_at: null,
+          attendances: { none: { attendance_date: today } },
+        },
+      }),
+
+      this.prisma.employeeAttendance.count({
+        where: {
+          employee: { company_id: companyId },
           attendance_date: today,
           check_in_time: { not: null },
           check_out_time: null,
         },
-      },
-    );
+      }),
 
-    const attendanceLog = await this.prisma.attendanceLog.findMany({
-      where: {
-        employee: {
-          company_id: companyId,
-        },
-      },
-      include: {
-        employee: true,
-      },
-    });
+      this.prisma.attendanceLog.findMany({
+        where: { employee: { company_id: companyId } },
+        include: { employee: true },
+      }),
+    ]);
 
     return {
-      total_employee: employeeCount,
-      employeePresentToday: employeePresentToday,
-      employeeHasNotCheckInToday: employeeHasNotCheckInToday,
-      employeeHasNotCheckedOut: employeeHasNotCheckedOut,
+      total_employee,
+      employeePresentToday,
+      employeeHasNotCheckInToday,
+      employeeHasNotCheckedOut,
       attendanceLog,
     };
   }
 
+  // ===================== COMPANY CHART =====================
+
   async getDataChartByCompany(companyId: string, query: ChartQueryDto) {
-    // 1) Validasi kombinasi parameter
-    const hasRange = !!query.start_date || !!query.end_date;
-    const hasDays = query.days !== undefined && query.days !== null;
-
-    if (hasRange && hasDays) {
-      throw new BadRequestException(
-        'Use either (start_date & end_date) OR days, not both.',
-      );
-    }
-    if (
-      (query.start_date && !query.end_date) ||
-      (!query.start_date && query.end_date)
-    ) {
-      throw new BadRequestException(
-        'start_date and end_date must be provided together.',
-      );
-    }
-
-    // 2) Tentukan startDate & endDate (UTC date-only)
-    let startDate: Date;
-    let endDate: Date;
-
-    if (query.start_date && query.end_date) {
-      startDate = this.parseDateOnly(query.start_date);
-      endDate = this.parseDateOnly(query.end_date);
-    } else {
-      const days = query.days ?? 7;
-      const todayUTC = this.toUTCDateOnly(new Date());
-      endDate = todayUTC;
-
-      startDate = new Date(todayUTC);
-      startDate.setUTCDate(startDate.getUTCDate() - (days - 1));
-    }
-
-    if (startDate > endDate) {
-      throw new BadRequestException('start_date must be <= end_date');
-    }
+    const { startDate, endDate } = this.resolveChartRange(query);
 
     const rangeDays = this.diffDaysInclusive(startDate, endDate);
     const granularity = this.pickGranularity(rangeDays);
 
-    // 3) Setup bucket query (generate_series + date_trunc)
-    const truncUnit = granularity; // day | week | month
-    const step =
-      granularity === 'day'
-        ? '1 day'
-        : granularity === 'week'
-          ? '1 week'
-          : '1 month';
-
-    // 4) Query aggregate (fill missing bucket)
-    const rows = await this.prisma.$queryRaw<
-      Array<{
-        period: Date;
-        present: number;
-        late: number;
-        absent: number;
-        leave: number;
-        sick: number;
-        total: number;
-      }>
-    >`
-      WITH buckets AS (
-        SELECT generate_series(
-          date_trunc(${truncUnit}::text, ${startDate}::timestamp),
-          date_trunc(${truncUnit}::text, ${endDate}::timestamp),
-          ${step}::interval
-        ) AS period
-      )
-      SELECT
-        b.period,
-        COALESCE(SUM(CASE WHEN ea.status = 'PRESENT' AND ea.is_late = false THEN 1 ELSE 0 END), 0)::int AS present,
-        COALESCE(SUM(CASE WHEN ea.status = 'PRESENT' AND ea.is_late = true  THEN 1 ELSE 0 END), 0)::int AS late,
-        COALESCE(SUM(CASE WHEN ea.status = 'ABSENT' THEN 1 ELSE 0 END), 0)::int AS absent,
-        COALESCE(SUM(CASE WHEN ea.status = 'LEAVE'  THEN 1 ELSE 0 END), 0)::int AS leave,
-        COALESCE(SUM(CASE WHEN ea.status = 'SICK'   THEN 1 ELSE 0 END), 0)::int AS sick,
-        COALESCE(COUNT(ea.employee_attendance_id), 0)::int AS total
-      FROM buckets b
-      LEFT JOIN employee_attendances ea
-        ON date_trunc(${truncUnit}::text, ea.attendance_date::timestamp) = b.period
-        AND ea.deleted_at IS NULL
-      LEFT JOIN employees e
-        ON e.employee_id = ea.employee_id
-        AND e.company_id = ${companyId}
-        AND e.deleted_at IS NULL
-      WHERE
-        (ea.employee_attendance_id IS NULL OR e.employee_id IS NOT NULL)
-      GROUP BY b.period
-      ORDER BY b.period ASC
-    `;
-
-    // 5) Buat label untuk chart
-    const labels = rows.map((r) => {
-      const d = new Date(r.period);
-      const yyyy = d.getUTCFullYear();
-      const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-      const dd = String(d.getUTCDate()).padStart(2, '0');
-
-      if (granularity === 'day') return `${yyyy}-${mm}-${dd}`;
-      if (granularity === 'month') return `${yyyy}-${mm}`;
-
-      // week: pakai tanggal awal bucket minggu (simple & konsisten)
-      return `${yyyy}-${mm}-${dd}`;
+    const rows = await this.queryChartByCompany({
+      companyId,
+      startDate,
+      endDate,
+      granularity,
     });
 
-    // 6) Format output
-    return {
-      granularity, // 'day' | 'week' | 'month'
-      range: {
-        start: startDate.toISOString().slice(0, 10),
-        end: endDate.toISOString().slice(0, 10),
-        days: rangeDays,
-      },
+    const labels = this.buildLabels(rows, granularity);
+
+    return this.formatChartOutput({
+      rows,
       labels,
-      series: {
-        PRESENT: rows.map((r) => r.present),
-        LATE: rows.map((r) => r.late),
-        ABSENT: rows.map((r) => r.absent),
-        LEAVE: rows.map((r) => r.leave),
-        SICK: rows.map((r) => r.sick),
-        total: rows.map((r) => r.total),
-      },
-      points: rows.map((r, i) => ({
-        period: labels[i],
-        PRESENT: r.present,
-        LATE: r.late,
-        ABSENT: r.absent,
-        LEAVE: r.leave,
-        SICK: r.sick,
-        total: r.total,
-      })),
-    };
+      granularity,
+      startDate,
+      endDate,
+      rangeDays,
+    });
   }
 
-  async getDataDashboardByEmployee(employeeId: string) {
-    const today = startOfDay(); // pastikan ini date-only konsisten dengan attendance_date
+  // ===================== EMPLOYEE DASHBOARD =====================
 
-    // 1) Employee + Company settings
+  async getDataDashboardByEmployee(employeeId: string) {
+    const today = startOfDay();
+
     const employee = await this.prisma.employee.findFirst({
       where: { employee_id: employeeId, deleted_at: null },
       select: {
@@ -242,7 +135,7 @@ export class DashboardService {
       },
     });
 
-    // kalau employeeId dari token harusnya valid, tapi tetap aman
+    // safety fallback
     if (!employee) {
       return {
         today: null,
@@ -254,43 +147,73 @@ export class DashboardService {
       };
     }
 
-    // 2) Today attendance
-    const todayAttendance = await this.prisma.employeeAttendance.findFirst({
-      where: {
-        employee_id: employeeId,
-        attendance_date: today,
-        deleted_at: null,
-      },
-      select: {
-        attendance_date: true,
-        status: true,
-        check_in_time: true,
-        check_out_time: true,
-        is_late: true,
-        late_minutes: true,
-        total_work_hours: true,
-      },
-    });
-
-    // 3) Summary bulan ini (PRESENT/LATE/ABSENT/LEAVE/SICK)
-    // pakai date range awal bulan -> akhir bulan (UTC)
     const now = new Date();
     const monthStart = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
     );
-    const monthEnd = new Date(
+    const monthEndExclusive = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
-    ); // exclusive
+    );
 
-    const monthAgg = await this.prisma.employeeAttendance.groupBy({
-      by: ['status', 'is_late'],
-      where: {
-        employee_id: employeeId,
-        deleted_at: null,
-        attendance_date: { gte: monthStart, lt: monthEnd },
-      },
-      _count: { _all: true },
-    });
+    const [
+      todayAttendance,
+      monthAgg,
+      recentAttendances,
+      pendingLeave,
+      latestPayroll,
+    ] = await Promise.all([
+      this.prisma.employeeAttendance.findFirst({
+        where: {
+          employee_id: employeeId,
+          attendance_date: today,
+          deleted_at: null,
+        },
+        select: {
+          attendance_date: true,
+          status: true,
+          check_in_time: true,
+          check_out_time: true,
+          is_late: true,
+          late_minutes: true,
+          total_work_hours: true,
+        },
+      }),
+
+      this.prisma.employeeAttendance.groupBy({
+        by: ['status', 'is_late'],
+        where: {
+          employee_id: employeeId,
+          deleted_at: null,
+          attendance_date: { gte: monthStart, lt: monthEndExclusive },
+        },
+        _count: { _all: true },
+      }),
+
+      this.prisma.employeeAttendance.findMany({
+        where: { employee_id: employeeId, deleted_at: null },
+        orderBy: { attendance_date: 'desc' },
+        take: 10,
+        select: {
+          attendance_date: true,
+          status: true,
+          check_in_time: true,
+          check_out_time: true,
+          is_late: true,
+          late_minutes: true,
+          total_work_hours: true,
+        },
+      }),
+
+      this.prisma.employeeLeaveApplication.count({
+        where: { employee_id: employeeId, deleted_at: null, status: 0 },
+      }),
+
+      this.prisma.payrollLog.findFirst({
+        where: { employee_id: employeeId, deleted_at: null },
+        orderBy: { payroll_date: 'desc' },
+        select: { payroll_date: true, amount: true, pdf_uri: true },
+      }),
+    ]);
 
     const summary = {
       PRESENT: 0,
@@ -312,34 +235,6 @@ export class DashboardService {
       else if (row.status === 'SICK') summary.SICK += c;
     }
 
-    // 4) Recent attendances (7–10 hari terakhir)
-    const recent_attendances = await this.prisma.employeeAttendance.findMany({
-      where: { employee_id: employeeId, deleted_at: null },
-      orderBy: { attendance_date: 'desc' },
-      take: 10,
-      select: {
-        attendance_date: true,
-        status: true,
-        check_in_time: true,
-        check_out_time: true,
-        is_late: true,
-        late_minutes: true,
-        total_work_hours: true,
-      },
-    });
-
-    // 5) Leave applications pending
-    const pendingLeave = await this.prisma.employeeLeaveApplication.count({
-      where: { employee_id: employeeId, deleted_at: null, status: 0 },
-    });
-
-    // 6) Payroll latest
-    const latestPayroll = await this.prisma.payrollLog.findFirst({
-      where: { employee_id: employeeId, deleted_at: null },
-      orderBy: { payroll_date: 'desc' },
-      select: { payroll_date: true, amount: true, pdf_uri: true },
-    });
-
     const fmtDate = (d: Date) => d.toISOString().slice(0, 10);
     const fmtDateTime = (d?: Date | null) => (d ? d.toISOString() : null);
 
@@ -360,7 +255,7 @@ export class DashboardService {
         month: `${monthStart.getUTCFullYear()}-${String(monthStart.getUTCMonth() + 1).padStart(2, '0')}`,
         ...summary,
       },
-      recent_attendances: recent_attendances
+      recent_attendances: recentAttendances
         .map((r) => ({
           attendance_date: fmtDate(r.attendance_date!),
           status: r.status,
@@ -370,7 +265,7 @@ export class DashboardService {
           late_minutes: r.late_minutes ?? null,
           total_work_hours: r.total_work_hours ?? null,
         }))
-        .reverse(), // biar urut naik di UI (opsional)
+        .reverse(),
       leave_applications: { pending: pendingLeave },
       payroll: {
         latest: latestPayroll
@@ -384,8 +279,36 @@ export class DashboardService {
     };
   }
 
+  // ===================== EMPLOYEE CHART =====================
+
   async getDataChartByEmployee(employeeId: string, query: ChartQueryDto) {
-    // 1) Validasi kombinasi parameter
+    const { startDate, endDate } = this.resolveChartRange(query);
+
+    const rangeDays = this.diffDaysInclusive(startDate, endDate);
+    const granularity = this.pickGranularity(rangeDays);
+
+    const rows = await this.queryChartByEmployee({
+      employeeId,
+      startDate,
+      endDate,
+      granularity,
+    });
+
+    const labels = this.buildLabels(rows, granularity);
+
+    return this.formatChartOutput({
+      rows,
+      labels,
+      granularity,
+      startDate,
+      endDate,
+      rangeDays,
+    });
+  }
+
+  // ===================== PRIVATE: RANGE & VALIDATION =====================
+
+  private resolveChartRange(query: ChartQueryDto) {
     const hasRange = !!query.start_date || !!query.end_date;
     const hasDays = query.days !== undefined && query.days !== null;
 
@@ -394,6 +317,7 @@ export class DashboardService {
         'Use either (start_date & end_date) OR days, not both.',
       );
     }
+
     if (
       (query.start_date && !query.end_date) ||
       (!query.start_date && query.end_date)
@@ -403,7 +327,6 @@ export class DashboardService {
       );
     }
 
-    // 2) Tentukan startDate & endDate (UTC date-only)
     let startDate: Date;
     let endDate: Date;
 
@@ -421,15 +344,23 @@ export class DashboardService {
       startDate.setUTCDate(startDate.getUTCDate() - (days - 1));
     }
 
-    if (startDate > endDate) {
+    if (startDate > endDate)
       throw new BadRequestException('start_date must be <= end_date');
-    }
 
-    const rangeDays = this.diffDaysInclusive(startDate, endDate);
-    const granularity = this.pickGranularity(rangeDays);
+    return { startDate, endDate };
+  }
 
-    // 3) Setup bucket query (generate_series + date_trunc)
-    const truncUnit = granularity; // day | week | month
+  // ===================== PRIVATE: QUERY CHART =====================
+
+  private async queryChartByCompany(params: {
+    companyId: string;
+    startDate: Date;
+    endDate: Date;
+    granularity: Granularity;
+  }) {
+    const { companyId, startDate, endDate, granularity } = params;
+
+    const truncUnit = granularity;
     const step =
       granularity === 'day'
         ? '1 day'
@@ -437,18 +368,53 @@ export class DashboardService {
           ? '1 week'
           : '1 month';
 
-    // 4) Query aggregate (bucket kosong tetap ada)
-    const rows = await this.prisma.$queryRaw<
-      Array<{
-        period: Date;
-        present: number;
-        late: number;
-        absent: number;
-        leave: number;
-        sick: number;
-        total: number;
-      }>
-    >`
+    return this.prisma.$queryRaw<ChartRow[]>`
+      WITH buckets AS (
+        SELECT generate_series(
+          date_trunc(${truncUnit}::text, ${startDate}::timestamp),
+          date_trunc(${truncUnit}::text, ${endDate}::timestamp),
+          ${step}::interval
+        ) AS period
+      )
+      SELECT
+        b.period,
+        COALESCE(SUM(CASE WHEN ea.status = 'PRESENT' AND ea.is_late = false THEN 1 ELSE 0 END), 0)::int AS present,
+        COALESCE(SUM(CASE WHEN ea.status = 'PRESENT' AND ea.is_late = true  THEN 1 ELSE 0 END), 0)::int AS late,
+        COALESCE(SUM(CASE WHEN ea.status = 'ABSENT' THEN 1 ELSE 0 END), 0)::int AS absent,
+        COALESCE(SUM(CASE WHEN ea.status = 'LEAVE'  THEN 1 ELSE 0 END), 0)::int AS leave,
+        COALESCE(SUM(CASE WHEN ea.status = 'SICK'   THEN 1 ELSE 0 END), 0)::int AS sick,
+        COALESCE(COUNT(ea.employee_attendance_id), 0)::int AS total
+      FROM buckets b
+      LEFT JOIN employee_attendances ea
+        ON date_trunc(${truncUnit}::text, ea.attendance_date::timestamp) = b.period
+        AND ea.deleted_at IS NULL
+      LEFT JOIN employees e
+        ON e.employee_id = ea.employee_id
+        AND e.company_id = ${companyId}
+        AND e.deleted_at IS NULL
+      WHERE (ea.employee_attendance_id IS NULL OR e.employee_id IS NOT NULL)
+      GROUP BY b.period
+      ORDER BY b.period ASC
+    `;
+  }
+
+  private async queryChartByEmployee(params: {
+    employeeId: string;
+    startDate: Date;
+    endDate: Date;
+    granularity: Granularity;
+  }) {
+    const { employeeId, startDate, endDate, granularity } = params;
+
+    const truncUnit = granularity;
+    const step =
+      granularity === 'day'
+        ? '1 day'
+        : granularity === 'week'
+          ? '1 week'
+          : '1 month';
+
+    return this.prisma.$queryRaw<ChartRow[]>`
       WITH buckets AS (
         SELECT generate_series(
           date_trunc(${truncUnit}::text, ${startDate}::timestamp),
@@ -472,21 +438,32 @@ export class DashboardService {
       GROUP BY b.period
       ORDER BY b.period ASC
     `;
+  }
 
-    // 5) Labels
-    const labels = rows.map((r) => {
+  // ===================== PRIVATE: FORMAT OUTPUT =====================
+
+  private buildLabels(rows: ChartRow[], granularity: Granularity) {
+    return rows.map((r) => {
       const d = new Date(r.period);
       const yyyy = d.getUTCFullYear();
       const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
       const dd = String(d.getUTCDate()).padStart(2, '0');
 
-      if (granularity === 'day') return `${yyyy}-${mm}-${dd}`;
       if (granularity === 'month') return `${yyyy}-${mm}`;
-      return `${yyyy}-${mm}-${dd}`; // week: label start bucket
+      return `${yyyy}-${mm}-${dd}`; // day/week => start bucket
     });
-    console.log(rows[0]);
+  }
 
-    // 6) Output
+  private formatChartOutput(params: {
+    rows: ChartRow[];
+    labels: string[];
+    granularity: Granularity;
+    startDate: Date;
+    endDate: Date;
+    rangeDays: number;
+  }) {
+    const { rows, labels, granularity, startDate, endDate, rangeDays } = params;
+
     return {
       granularity,
       range: {
@@ -515,8 +492,9 @@ export class DashboardService {
     };
   }
 
+  // ===================== PRIVATE: DATE HELPERS =====================
+
   private parseDateOnly(dateStr: string): Date {
-    // dateStr: 'YYYY-MM-DD'
     const d = new Date(`${dateStr}T00:00:00.000Z`);
     if (Number.isNaN(d.getTime())) {
       throw new BadRequestException('Invalid date format. Use YYYY-MM-DD');
@@ -532,8 +510,7 @@ export class DashboardService {
 
   private diffDaysInclusive(start: Date, end: Date): number {
     const ms = end.getTime() - start.getTime();
-    const days = Math.floor(ms / (24 * 60 * 60 * 1000)) + 1;
-    return days;
+    return Math.floor(ms / 86400000) + 1;
   }
 
   private pickGranularity(rangeDays: number): Granularity {

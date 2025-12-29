@@ -9,18 +9,23 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
+
+import { successResponse } from 'src/utils/response.utils';
+
+import { CompanyAuthGuard } from '../auth/guards/company.guard';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
+
 import { PayrollAllowanceRuleService } from './payroll-allowance-rule.service';
 import { CreatePayrollAllowanceRuleDto } from './dto/create-payroll-allowance-rule.dto';
 import { UpdatePayrollAllowanceRuleDto } from './dto/update-payroll-allowance-rule.dto';
-import { Request } from 'express';
-import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
-import { CompanyAuthGuard } from '../auth/guards/company.guard';
-import { successResponse } from 'src/utils/response.utils';
 
 @Controller({ path: 'company/payroll/allowance-rules', version: '1' })
 @UseGuards(CompanyAuthGuard)
 export class PayrollAllowanceRuleController {
   constructor(private readonly service: PayrollAllowanceRuleService) {}
+
+  // ===================== CRUD =====================
 
   @Post()
   async create(

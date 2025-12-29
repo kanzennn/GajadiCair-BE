@@ -1,18 +1,24 @@
 import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
-import { DashboardService } from './dashboard.service';
-import { CompanyAuthGuard } from '../auth/guards/company.guard';
-import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
-import { successResponse } from 'src/utils/response.utils';
-import { ChartQueryDto } from './dto/chart-query.dto';
-import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
+import type { Request } from 'express';
 
-@Controller({ path: '', version: '1' })
+import { DashboardService } from './dashboard.service';
+import { ChartQueryDto } from './dto/chart-query.dto';
+
+import { successResponse } from 'src/utils/response.utils';
+
+import { CompanyAuthGuard } from '../auth/guards/company.guard';
+import { EmployeeAuthGuard } from '../auth/guards/employee.guard';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
+
+@Controller({ version: '1' })
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
-  @Get('/company/dashboard')
+  // ===================== COMPANY =====================
+
+  @Get('company/dashboard')
   @UseGuards(CompanyAuthGuard)
-  async getDataDashboard(
+  async getCompanyDashboard(
     @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     const data = await this.dashboardService.getDataDashboardByCompany(
@@ -22,13 +28,12 @@ export class DashboardController {
     return successResponse(data, 'Dashboard data retrieved successfully');
   }
 
-  @Get('/company/dashboard/chart')
+  @Get('company/dashboard/chart')
   @UseGuards(CompanyAuthGuard)
-  async getDataChart(
+  async getCompanyDashboardChart(
     @Req() req: Request & { user: TokenPayloadInterface },
     @Query() query: ChartQueryDto,
   ) {
-    console.log(query);
     const data = await this.dashboardService.getDataChartByCompany(
       req.user.sub,
       query,
@@ -37,20 +42,23 @@ export class DashboardController {
     return successResponse(data, 'Dashboard chart retrieved successfully');
   }
 
-  @Get('/employee/dashboard')
+  // ===================== EMPLOYEE =====================
+
+  @Get('employee/dashboard')
   @UseGuards(EmployeeAuthGuard)
-  async getEmployeeDataDashboard(
+  async getEmployeeDashboard(
     @Req() req: Request & { user: TokenPayloadInterface },
   ) {
     const data = await this.dashboardService.getDataDashboardByEmployee(
       req.user.sub,
     );
+
     return successResponse(data, 'Employee dashboard retrieved successfully');
   }
 
-  @Get('/employee/dashboard/chart')
+  @Get('employee/dashboard/chart')
   @UseGuards(EmployeeAuthGuard)
-  async getEmployeeDataChart(
+  async getEmployeeDashboardChart(
     @Req() req: Request & { user: TokenPayloadInterface },
     @Query() query: ChartQueryDto,
   ) {
@@ -58,6 +66,7 @@ export class DashboardController {
       req.user.sub,
       query,
     );
+
     return successResponse(
       data,
       'Employee dashboard chart retrieved successfully',

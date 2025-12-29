@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { CreateCustomHolidayDto } from './dto/create-custom-holiday.dto';
-import { UpdateCustomHolidayDto } from './dto/update-custom-holiday.dto';
+
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+
 import { CompanyService } from '../company/company.service';
+
+import { CreateCustomHolidayDto } from './dto/create-custom-holiday.dto';
+import { UpdateCustomHolidayDto } from './dto/update-custom-holiday.dto';
 
 @Injectable()
 export class CustomHolidayService {
@@ -12,9 +15,7 @@ export class CustomHolidayService {
     private readonly companyService: CompanyService,
   ) {}
 
-  // -------------------------
-  // Helpers
-  // -------------------------
+  // ===================== Helpers =====================
 
   private async assertCompanyExists(companyId: string) {
     const company = await this.companyService.getCompanyById(companyId);
@@ -46,6 +47,7 @@ export class CustomHolidayService {
         'Start date cannot be greater than end date',
       );
     }
+
     if (start < todayUtc || end < todayUtc) {
       throw new BadRequestException(
         'Start date and end date cannot be in the past',
@@ -59,6 +61,7 @@ export class CustomHolidayService {
     action: 'update' | 'delete',
   ) {
     const existingStartUtc = this.toUtcDateOnly(existingStartDate);
+
     if (existingStartUtc <= todayUtc) {
       throw new BadRequestException(
         `Cannot ${action} custom holiday when start_date is today or in the past`,
@@ -89,9 +92,7 @@ export class CustomHolidayService {
     return existing;
   }
 
-  // -------------------------
-  // Public methods
-  // -------------------------
+  // ===================== Public APIs =====================
 
   async createByCompany(companyId: string, dto: CreateCustomHolidayDto) {
     await this.assertCompanyExists(companyId);
@@ -114,10 +115,7 @@ export class CustomHolidayService {
 
   async findAllByCompany(companyId: string) {
     return this.prisma.companyCustomHoliday.findMany({
-      where: {
-        company_id: companyId,
-        deleted_at: null,
-      },
+      where: { company_id: companyId, deleted_at: null },
       orderBy: { start_date: 'asc' },
     });
   }
@@ -132,7 +130,6 @@ export class CustomHolidayService {
     companyId: string,
     company_custom_holiday_id: string,
   ) {
-    // lebih efisien: langsung query by company + not deleted
     const data = await this.prisma.companyCustomHoliday.findFirst({
       where: {
         company_custom_holiday_id,
@@ -141,10 +138,7 @@ export class CustomHolidayService {
       },
     });
 
-    if (!data) {
-      throw new BadRequestException('Custom holiday not found');
-    }
-
+    if (!data) throw new BadRequestException('Custom holiday not found');
     return data;
   }
 
@@ -161,7 +155,6 @@ export class CustomHolidayService {
     );
     const todayUtc = this.todayUtcDateOnly();
 
-    // rule: tidak boleh update jika sudah mulai / hari ini
     this.assertNotStartedYet(existing.start_date, todayUtc, 'update');
 
     const start = this.parseIsoDateToUtc(dto.start_date, 'start_date');
@@ -188,7 +181,6 @@ export class CustomHolidayService {
     );
     const todayUtc = this.todayUtcDateOnly();
 
-    // rule: tidak boleh delete jika sudah mulai / hari ini
     this.assertNotStartedYet(existing.start_date, todayUtc, 'delete');
 
     return this.prisma.companyCustomHoliday.update({

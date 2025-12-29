@@ -1,20 +1,24 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Param,
+  Controller,
   Delete,
-  UseGuards,
-  Req,
+  Get,
+  Param,
+  Post,
   Put,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
+
+import { successResponse } from 'src/utils/response.utils';
+
+import { CompanyAuthGuard } from '../auth/guards/company.guard';
+import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
+
 import { CustomHolidayService } from './custom-holiday.service';
 import { CreateCustomHolidayDto } from './dto/create-custom-holiday.dto';
 import { UpdateCustomHolidayDto } from './dto/update-custom-holiday.dto';
-import { CompanyAuthGuard } from '../auth/guards/company.guard';
-import { TokenPayloadInterface } from '../auth/interfaces/token-payload.interface';
-import { successResponse } from 'src/utils/response.utils';
 
 @Controller({ path: 'company/custom-holiday', version: '1' })
 @UseGuards(CompanyAuthGuard)
@@ -24,13 +28,12 @@ export class CustomHolidayController {
   @Post()
   async create(
     @Req() req: Request & { user: TokenPayloadInterface },
-    @Body() createCustomHolidayDto: CreateCustomHolidayDto,
+    @Body() dto: CreateCustomHolidayDto,
   ) {
     const data = await this.customHolidayService.createByCompany(
       req.user.sub,
-      createCustomHolidayDto,
+      dto,
     );
-
     return successResponse(data, 'Custom holiday created successfully', 201);
   }
 
@@ -42,8 +45,8 @@ export class CustomHolidayController {
 
   @Get(':company_custom_holiday_id')
   async findOne(
-    @Param('company_custom_holiday_id') company_custom_holiday_id: string,
     @Req() req: Request & { user: TokenPayloadInterface },
+    @Param('company_custom_holiday_id') company_custom_holiday_id: string,
   ) {
     const data = await this.customHolidayService.findOneByIdByCompany(
       req.user.sub,
@@ -55,29 +58,29 @@ export class CustomHolidayController {
 
   @Put(':company_custom_holiday_id')
   async update(
-    @Param('company_custom_holiday_id') company_custom_holiday_id: string,
-    @Body() updateCustomHolidayDto: UpdateCustomHolidayDto,
     @Req() req: Request & { user: TokenPayloadInterface },
+    @Param('company_custom_holiday_id') company_custom_holiday_id: string,
+    @Body() dto: UpdateCustomHolidayDto,
   ) {
-    const updatedData = await this.customHolidayService.updateByCompany(
+    const data = await this.customHolidayService.updateByCompany(
       req.user.sub,
       company_custom_holiday_id,
-      updateCustomHolidayDto,
+      dto,
     );
 
-    return successResponse(updatedData, 'Custom holiday updated successfully');
+    return successResponse(data, 'Custom holiday updated successfully');
   }
 
   @Delete(':company_custom_holiday_id')
   async remove(
-    @Param('company_custom_holiday_id') company_custom_holiday_id: string,
     @Req() req: Request & { user: TokenPayloadInterface },
+    @Param('company_custom_holiday_id') company_custom_holiday_id: string,
   ) {
-    const deletedData = await this.customHolidayService.removeByCompany(
+    const data = await this.customHolidayService.removeByCompany(
       req.user.sub,
       company_custom_holiday_id,
     );
 
-    return successResponse(deletedData, 'Custom holiday removed successfully');
+    return successResponse(data, 'Custom holiday removed successfully');
   }
 }

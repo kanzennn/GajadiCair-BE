@@ -1,42 +1,51 @@
 import { Injectable } from '@nestjs/common';
+
 import { PrismaService } from 'src/common/services/prisma/prisma.service';
-import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
-import { SubscriptionService } from '../subscription/subscription.service';
-import { convertFilename } from 'src/utils/convertString.utils';
 import { S3Service } from 'src/common/services/s3/s3.service';
+
+import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
+import { convertFilename } from 'src/utils/convertString.utils';
+
+import { SubscriptionService } from '../subscription/subscription.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+
+type SeatsResult = {
+  seat_taken: number;
+  seat_availability: number | null;
+  seat_capacity: number | null;
+};
 
 @Injectable()
 export class CompanyService {
   constructor(
-    private readonly subscriptionsService: SubscriptionService,
+    private readonly subscriptionService: SubscriptionService,
     private readonly prisma: PrismaService,
     private readonly s3: S3Service,
   ) {}
 
-  async getAvailableSeats(company_id: string) {
-    const company = await this.prisma.company.findUnique({
+  async getCompanyById(company_id: string) {
+    return this.prisma.company.findUnique({
+      where: { company_id },
+    });
+  }
+
+  async getAvailableSeats(company_id: string): Promise<SeatsResult> {
+    const company = await this.prisma.company.findFirst({
       where: { company_id, deleted_at: null },
+      select: { company_id: true },
     });
 
-    const totalEmployee = await this.prisma.employee.count({
-      where: { company_id, deleted_at: null },
-    });
+    if (!company) throw new BadRequestException('Company not found');
 
-    let seat_capacity = 0;
+    const [totalEmployee, subscriptionStatus] = await Promise.all([
+      this.prisma.employee.count({
+        where: { company_id, deleted_at: null },
+      }),
+      this.subscriptionService.getSubscriptionStatus(company_id),
+    ]);
 
-    if (!company) {
-      throw new BadRequestException('Company not found');
-    }
-
-    const subscriptionStatus =
-      await this.subscriptionsService.getSubscriptionStatus(company_id);
-
-    if (subscriptionStatus.level_plan === 0) {
-      seat_capacity = 5;
-    } else if (subscriptionStatus.level_plan === 1) {
-      seat_capacity = 20;
-    } else if (subscriptionStatus.level_plan === 2) {
+    // Level 2: unlimited seat
+    if (subscriptionStatus.level_plan === 2) {
       return {
         seat_taken: totalEmployee,
         seat_availability: null,
@@ -44,18 +53,12 @@ export class CompanyService {
       };
     }
 
-    const availableSeats = seat_capacity - totalEmployee;
+    const seat_capacity = subscriptionStatus.level_plan === 1 ? 20 : 5; // level 0 => 5, level 1 => 20
     return {
       seat_taken: totalEmployee,
-      seat_availability: availableSeats,
-      seat_capacity: seat_capacity,
+      seat_capacity,
+      seat_availability: Math.max(0, seat_capacity - totalEmployee),
     };
-  }
-
-  async getCompanyById(id: string) {
-    return await this.prisma.company.findUnique({
-      where: { company_id: id },
-    });
   }
 
   async updateCompanyProfile(
@@ -63,32 +66,31 @@ export class CompanyService {
     dto: UpdateProfileDto,
     file?: Express.Multer.File,
   ) {
-    const checkIsCompanyExist = await this.prisma.company.findUnique({
+    const exists = await this.prisma.company.findUnique({
       where: { company_id },
+      select: { company_id: true },
     });
 
-    if (!checkIsCompanyExist) {
-      throw new BadRequestException('Company not found');
-    }
+    if (!exists) throw new BadRequestException('Company not found');
+
+    const data: UpdateProfileDto = { ...dto };
 
     if (file) {
       const key = `company/profile-picture/${Date.now()}-${convertFilename(file.originalname)}`;
 
-      const picture = await this.s3.uploadBuffer({
+      const uploaded = await this.s3.uploadBuffer({
         key,
         buffer: file.buffer,
         contentType: file.mimetype,
         cacheControl: 'public, max-age=31536000',
       });
 
-      dto.avatar_uri = picture.key;
+      data.avatar_uri = uploaded.key;
     }
 
-    const updateData = await this.prisma.company.update({
+    return this.prisma.company.update({
       where: { company_id },
-      data: dto,
+      data,
     });
-
-    return updateData;
   }
 }
