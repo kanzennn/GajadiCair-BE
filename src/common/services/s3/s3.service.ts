@@ -98,7 +98,7 @@ export class S3Service {
   getPublicUrl(key: string) {
     if (!this.publicBaseUrl) return undefined;
     const base = this.publicBaseUrl.replace(/\/$/, '');
-    return `${base}/${encodeURIComponent(key).replaceAll(/%2F/g, '/')}`;
+    return `${base}/${encodeURIComponent(key).replaceAll(/%2F/, '/')}`;
   }
 
   private must(name: string) {
