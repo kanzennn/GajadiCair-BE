@@ -102,7 +102,7 @@ export class FaceRecognitionService {
 
   async enrollFace(files: Express.Multer.File[], employeeId: string) {
     const enrolled = await this.prisma.employee.findUnique({
-      where: { employee_id: employeeId },
+      where: { employee_id: employeeId, deleted_at: null },
       select: { is_face_enrolled: true },
     });
 
@@ -154,10 +154,11 @@ export class FaceRecognitionService {
   async verifyFace(file: Express.Multer.File, employeeId: string) {
     const enrolled = await this.prisma.employee.findUnique({
       where: { employee_id: employeeId },
-      select: { is_face_enrolled: true },
+      select: { is_face_enrolled: true, deleted_at: true },
     });
 
-    if (!enrolled) throw new BadRequestException('Employee not found');
+    if (!enrolled || enrolled.deleted_at === null)
+      throw new BadRequestException('Employee not found');
     if (!enrolled.is_face_enrolled) {
       throw new BadRequestException('You have not enrolled your face data yet');
     }

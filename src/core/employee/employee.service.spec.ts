@@ -8,6 +8,7 @@ import { CustomMailerService } from 'src/common/services/mailer/mailer.service';
 import { S3Service } from 'src/common/services/s3/s3.service';
 
 import { CompanyService } from '../company/company.service';
+import { FaceRecognitionService } from '../face-recognition/face-recognition.service';
 
 import { BadRequestException } from 'src/common/exceptions/badRequest.exception';
 
@@ -42,6 +43,10 @@ describe('EmployeeService', () => {
     uploadBuffer: jest.fn(),
   };
 
+  const faceRecognitionService = {
+    deleteFaceData: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -52,6 +57,7 @@ describe('EmployeeService', () => {
         { provide: CustomMailerService, useValue: mailerService },
         { provide: CompanyService, useValue: companyService },
         { provide: S3Service, useValue: s3Service },
+        { provide: FaceRecognitionService, useValue: faceRecognitionService }, // ✅ NEW
       ],
     }).compile();
 
@@ -105,7 +111,6 @@ describe('EmployeeService', () => {
 
       s3Service.uploadBuffer.mockResolvedValue({
         key: 'employee/profile-picture/123-a.png',
-        url: 'https://s3/url',
       });
 
       prisma.employee.update.mockResolvedValue({
@@ -175,7 +180,7 @@ describe('EmployeeService', () => {
         seat_availability: 10,
       });
 
-      prisma.employee.findFirst.mockResolvedValue(null); // username not exist
+      prisma.employee.findFirst.mockResolvedValue(null);
 
       prisma.employee.create.mockResolvedValue({
         employee_id: 'e1',
@@ -192,7 +197,7 @@ describe('EmployeeService', () => {
         email: 'e@e.com',
         name: 'Emp',
         send_to_email: false,
-      });
+      } as any);
 
       expect(prisma.employee.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -239,7 +244,7 @@ describe('EmployeeService', () => {
           companyName: 'Comp',
           companyCode: 'CID',
           employeeUsername: 'u',
-          password: 'p', // plain password yang dikirim
+          password: 'p',
         }),
       );
 
@@ -309,7 +314,7 @@ describe('EmployeeService', () => {
     });
 
     it('should hash password when provided, update employee, and sanitize', async () => {
-      prisma.employee.findFirst.mockResolvedValue(null); // username not exist
+      prisma.employee.findFirst.mockResolvedValue(null);
 
       prisma.employee.update.mockResolvedValue({
         employee_id: 'e1',
@@ -398,7 +403,20 @@ describe('EmployeeService', () => {
   });
 
   describe('deleteEmployeeByIdByCompany', () => {
-    it('should soft delete employee', async () => {
+    it('should throw when employee not found', async () => {
+      prisma.employee.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.deleteEmployeeByIdByCompany('c1', 'e1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('should soft delete employee when not face enrolled', async () => {
+      prisma.employee.findFirst.mockResolvedValue({
+        employee_id: 'e1',
+        is_face_enrolled: false,
+      });
+
       prisma.employee.update.mockResolvedValue({
         employee_id: 'e1',
         deleted_at: new Date(),
@@ -406,15 +424,36 @@ describe('EmployeeService', () => {
 
       const res = await service.deleteEmployeeByIdByCompany('c1', 'e1');
 
+      expect(faceRecognitionService.deleteFaceData).not.toHaveBeenCalled();
+
       expect(prisma.employee.update).toHaveBeenCalledWith({
         where: { company_id: 'c1', employee_id: 'e1', deleted_at: null },
         data: { deleted_at: expect.any(Date) },
       });
 
-      expect(res).toEqual({
+      expect(res).toMatchObject({
         employee_id: 'e1',
         deleted_at: expect.any(Date),
       });
+    });
+
+    it('should delete face data first when face enrolled', async () => {
+      prisma.employee.findFirst.mockResolvedValue({
+        employee_id: 'e1',
+        is_face_enrolled: true,
+      });
+
+      faceRecognitionService.deleteFaceData.mockResolvedValue(true);
+
+      prisma.employee.update.mockResolvedValue({
+        employee_id: 'e1',
+        deleted_at: new Date(),
+      });
+
+      await service.deleteEmployeeByIdByCompany('c1', 'e1');
+
+      expect(faceRecognitionService.deleteFaceData).toHaveBeenCalledWith('e1');
+      expect(prisma.employee.update).toHaveBeenCalled();
     });
   });
 

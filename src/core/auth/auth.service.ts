@@ -201,7 +201,7 @@ export class AuthService {
 
   async loginEmployee(credentials: LoginEmployeeAuthDto) {
     const employee = await this.prisma.employee.findFirst({
-      where: { username: credentials.username },
+      where: { username: credentials.username, deleted_at: null },
       include: { company: true },
     });
 

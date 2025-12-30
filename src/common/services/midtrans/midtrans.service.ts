@@ -22,6 +22,11 @@ export class MidtransService {
   async createTransaction(
     params: midtransClient.Snap.SnapTransactionRequestType,
   ) {
-    return this.snap.createTransaction(params);
+    return this.snap.createTransaction({
+      ...params,
+      callbacks: {
+        finish: 'https://gajadicairbrooo.netlify.app/upgrade',
+      },
+    });
   }
 }

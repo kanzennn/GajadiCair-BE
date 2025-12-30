@@ -1,5 +1,5 @@
 @startuml
-title Logical Class Diagram - GajadiCair System (with Job Services)
+title Class Diagram - GajadiCair
 
 skinparam classAttributeIconSize 0
 hide empty members
@@ -8,39 +8,46 @@ hide empty members
 ' COMPANY
 ' =========================
 class Company {
-  company_id: string
-  name: string
-  email: string
-  company_identifier: string
-  avatar_uri: string
-  payroll_day_of_month: number
-  attendance_open_time: string
-  attendance_close_time: string
-  work_start_time: string
-  attendance_tolerance_minutes: number
-  minimum_hours_per_day: number
-  recognize_with_gesture: boolean
+  + company_id: string
+  + name: string
+  + email: string
+  + company_identifier: string
+  + avatar_uri: string
+  + payroll_day_of_month: number
+  + attendance_open_time: string
+  + attendance_close_time: string
+  + work_start_time: string
+  + attendance_tolerance_minutes: number
+  + minimum_hours_per_day: number
+  + recognize_with_gesture: boolean
   --
-  getCompanyById()
-  updateCompanyProfile()
-  getAvailableSeats()
+  + login()
+  + register()
+  + loginByGoogle()
+  + getProfile()
+  + updateProfile()
+  + createEmployee()
+  + updateEmployee()
+  + getEmployeeList()
+  + getEmployeeDetail()
 }
 
 ' =========================
 ' EMPLOYEE
 ' =========================
 class Employee {
-  employee_id: string
-  company_id: string
-  name: string
-  email: string
-  username: string
-  is_active: boolean
-  base_salary: number
-  is_face_enrolled: boolean
+  + employee_id: string
+  + company_id: string
+  + name: string
+  + email: string
+  + username: string
+  + is_active: boolean
+  + base_salary: number
+  + is_face_enrolled: boolean
   --
-  getEmployeeProfile()
-  updateEmployeeProfile()
+  + login()
+  + getProfile()
+  + updateProfile()
 }
 
 Company "1" o-- "*" Employee : employs
@@ -48,94 +55,157 @@ Company "1" o-- "*" Employee : employs
 ' =========================
 ' ATTENDANCE
 ' =========================
-class EmployeeAttendance {
-  attendance_date: Date
-  status: AttendanceStatus
-  check_in_time: Date
-  check_out_time: Date
-  is_late: boolean
+class Attendance {
+  + attendance_date: Date
+  + status: 'PRESENT' | 'ABSENT' | 'LEAVE' | 'SICK'
+  + check_in_time: Date
+  + check_out_time: Date
+  + is_late: boolean
   --
+  + canCheckIn()
+  + canCheckOut()
+  + checkInFace()
+  + checkOutFace()
 }
 
-enum AttendanceStatus {
-  PRESENT
-  ABSENT
-  LEAVE
-  SICK
-}
 
-Employee "1" o-- "*" EmployeeAttendance : records
+Employee "1" o-- "*" Attendance : records
+Attendance ..> Company : uses attendance rules
 
 ' =========================
-' PAYROLL
+' PAYROLL (Snapshot)
 ' =========================
-class PayrollLog {
-  payroll_date: Date
-  amount: number
+class Payroll {
+  + payroll_id: string
+  + payroll_date: Date
+  + base_salary: number
+  + total_allowance: number
+  + total_deduction: number
+  + net_salary: number
   --
+  + getDetails()
+  + calculatePayroll()
 }
 
 class PayrollDetail {
-  description: string
-  type: PayrollDetailType
-  amount: number
+  + payroll_detail_id: string
+  + description: string
+  + type: 'BASE_SALARY' | 'ALLOWANCE' | 'DEDUCTION'
+  + amount: number
+  + source_ref: string
   --
 }
 
-enum PayrollDetailType {
-  BASE_SALARY
-  ALLOWANCE
-  DEDUCTION
+Employee "1" o-- "*" Payroll : receives
+Payroll "1" o-- "*" PayrollDetail : consists_of
+
+' =========================
+' PAYROLL RULES (Company Master)
+' =========================
+class PayrollAllowanceRule {
+  + payroll_allowance_rule_id: string
+  + company_id: string
+  + name: string
+  + amount: number
+  + is_active: boolean
 }
 
-Employee "1" o-- "*" PayrollLog : receives
-PayrollLog "1" o-- "*" PayrollDetail : consists_of
+class PayrollDeductionRule {
+  + payroll_deduction_rule_id: string
+  + company_id: string
+  + name: string
+  + amount: number
+  + is_active: boolean
+}
+
+Company "1" o-- "*" PayrollAllowanceRule : defines
+Company "1" o-- "*" PayrollDeductionRule : defines
+
+Payroll ..> PayrollAllowanceRule : reads rules
+Payroll ..> PayrollDeductionRule : reads rules
 
 ' =========================
 ' SUBSCRIPTION
 ' =========================
-class SubscriptionHistory {
-  level_plan: number
-  period_start: Date
-  period_end: Date
+class Subscription {
+  + subscription_id: string
+  + level_plan: number
+  + period_start: Date
+  + period_end: Date
   --
+  + getCurrentSubscription()
+  + getSubscriptionHistory()
+  + generateSubscriptionSnap()
 }
 
-Company "1" o-- "*" SubscriptionHistory : subscribes
+Company "1" o-- "*" Subscription : subscribes
 
 ' =========================
-' FACE RECOGNITION
+' FACE RECOGNITION (External Service)
 ' =========================
-class FaceRecognitionService {
+class FaceRecognition {
   --
-  checkFace()
-  enrollFace()
-  verifyFace()
-  deleteFaceData()
+  + checkFace()
+  + enrollFace()
+  + verifyFace()
+  + deleteFaceData()
+  + getGestureList()
 }
 
-FaceRecognitionService ..> Employee : verifies
+FaceRecognition ..> Employee : verifies
 
 ' =========================
-' JOB SERVICES
+' JOBS
 ' =========================
-class AttendanceJobService {
+class AttendanceJob {
   --
-  handleAutoAbsent()
+  + handleAutoAbsent()
 }
 
-class PayrollJobService {
+class PayrollJob {
   --
-  runMonthlyPayroll()
+  + runMonthlyPayroll()
 }
 
-AttendanceJobService ..> Employee
-AttendanceJobService ..> EmployeeAttendance
-AttendanceJobService ..> Company
+AttendanceJob ..> Employee
+AttendanceJob ..> Attendance
+AttendanceJob ..> Company
 
-PayrollJobService ..> Company
-PayrollJobService ..> Employee
-PayrollJobService ..> PayrollLog
-PayrollJobService ..> PayrollDetail
+PayrollJob ..> Company
+PayrollJob ..> Employee
+PayrollJob ..> Payroll
+PayrollJob ..> PayrollDetail
+
+' =========================
+' WORKING DAYS & HOLIDAYS
+' =========================
+class WorkingDay {
+  + monday: boolean
+  + tuesday: boolean
+  + wednesday: boolean
+  + thursday: boolean
+  + friday: boolean
+  + saturday: boolean
+  + sunday: boolean
+  --
+  + getWorkingDays()
+  + updateWorkingDays()
+  + isWorkingDay()
+}
+
+class CustomHoliday {
+  + company_id: string
+  + start_date: Date
+  + end_date: Date
+  + description: string
+  --
+  + getAllHolidays()
+  + isHoliday()
+  + addHoliday()
+  + removeHoliday()
+}
+
+Company "1" o-- "1" WorkingDay : has
+Company "1" o-- "*" CustomHoliday : defines
 
 @enduml
