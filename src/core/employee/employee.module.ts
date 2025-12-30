@@ -7,9 +7,16 @@ import { BankModule } from '../bank/bank.module';
 import { CompanyModule } from '../company/company.module';
 import { S3Service } from 'src/common/services/s3/s3.service';
 import { SubscriptionModule } from '../subscription/subscription.module';
+import { FaceRecognitionModule } from '../face-recognition/face-recognition.module';
 
 @Module({
-  imports: [CustomMailerModule, BankModule, CompanyModule, SubscriptionModule],
+  imports: [
+    CustomMailerModule,
+    BankModule,
+    CompanyModule,
+    SubscriptionModule,
+    FaceRecognitionModule,
+  ],
   controllers: [EmployeeController],
   providers: [EmployeeService, PrismaService, S3Service],
   exports: [EmployeeService],

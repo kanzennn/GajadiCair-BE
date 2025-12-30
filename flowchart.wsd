@@ -1,0 +1,126 @@
+@startuml
+title Flowchart Rinci - checkInFace (semua IF)
+
+start
+:today=startOfDay();
+:now=new Date();
+:nowMin=nowMinutesJakarta(now);
+
+:BEGIN TRANSACTION;
+:findEmployeeCompanyForCheckIn(employeeId);
+
+if (employee & company ditemukan?) then (Ya)
+  :sub=getSubscriptionStatus(company_id);
+
+  :hasGesturePayload = (gesture.length>0) OR (hand.length>0);
+
+  if (recognize_with_gesture == false?) then (Ya)
+    if (hasGesturePayload == true?) then (Ya)
+      :Throw "Gesture recognition is disabled by company setting";
+      stop
+    else (Tidak)
+      :verifyFace(file, employeeId);
+    endif
+  else (Tidak)
+    if (hasGesturePayload == false?) then (Ya)
+      :verifyFace(file, employeeId);
+    else (Tidak)
+      if (dto.gesture & dto.hand ada?) then (Ya)
+        if (planLevel < 1?) then (Ya)
+          :Throw "Gesture recognition requires subscription plan Level 1 or above";
+          stop
+        else (Tidak)
+          :maxHands = (planLevel>=2 ? 2 : 1);
+
+          if (len(hand)>maxHands OR len(gesture)>maxHands?) then (Ya)
+            :Throw "Your plan allows up to maxHands hand gesture(s)";
+            stop
+          else (Tidak)
+
+            if (len(hand) != len(gesture)?) then (Ya)
+              :Throw "hand and gesture must have the same length";
+              stop
+            else (Tidak)
+              :normalize hands -> Left/Right or null;
+
+              if (ada hand invalid?) then (Ya)
+                :Throw "hand must be Left or Right";
+                stop
+              else (Tidak)
+
+                if (len==2 dan kedua hand sama?) then (Ya)
+                  :Throw "When sending 2 hands, they must be different";
+                  stop
+                else (Tidak)
+                  :verifyFace(file, employeeId);
+                  :expectedPairs & detectedSet;
+
+                  if (semua expectedPairs ada di detectedSet?) then (Ya)
+                    :lanjut;
+                  else (Tidak)
+                    :Throw "Gesture does not match";
+                    stop
+                  endif
+
+                endif
+              endif
+            endif
+          endif
+        endif
+      else (Tidak)
+        :Throw "gesture and hand must be provided together";
+        stop
+      endif
+    endif
+  endif
+
+  if (openTime ada?) then (Ya)
+    if (nowMin < openMin?) then (Ya)
+      :Throw "Attendance is not open yet at this time";
+      stop
+    endif
+  endif
+
+  if (closeTime ada?) then (Ya)
+    if (nowMin > closeMin?) then (Ya)
+      :Throw "Attendance is already closed";
+      stop
+    endif
+  endif
+
+  if (location_enabled == true?) then (Ya)
+    if (radiusMeters null/0?) then (Ya)
+      :Throw "Attendance radius not configured";
+      stop
+    else (Tidak)
+      :Geo query -> has_location, in_radius;
+      if (has_location == false?) then (Ya)
+        :Throw "Attendance location not configured";
+        stop
+      else (Tidak)
+        if (in_radius == false?) then (Ya)
+          :Throw "You are outside the attendance radius";
+          stop
+        endif
+      endif
+    endif
+  endif
+
+  :existing=find attendance today;
+  if (existing ditemukan?) then (Ya)
+    :Throw "Already checked in today";
+    stop
+  else (Tidak)
+    :late=calculateLateMinutes(...);
+    :create attendance;
+    :update check_in_location;
+    :attendanceLog.create(log_type=0);
+    :return created attendance;
+    stop
+  endif
+
+else (Tidak)
+  :Throw "Employee not found";
+  stop
+endif
+@enduml

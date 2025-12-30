@@ -16,6 +16,7 @@ import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateProfileEmployeeDto } from './dto/update-profile-employee.dto';
 
 import { Employee } from 'generated/prisma';
+import { FaceRecognitionService } from '../face-recognition/face-recognition.service';
 
 @Injectable()
 export class EmployeeService {
@@ -24,6 +25,7 @@ export class EmployeeService {
     private readonly mailerService: CustomMailerService,
     private readonly companyService: CompanyService,
     private readonly s3: S3Service,
+    private readonly faceRecognitionService: FaceRecognitionService,
   ) {}
 
   // ===================== Profile =====================
@@ -226,6 +228,15 @@ export class EmployeeService {
   }
 
   async deleteEmployeeByIdByCompany(company_id: string, employee_id: string) {
+    const employee = await this.prisma.employee.findFirst({
+      where: { company_id, employee_id, deleted_at: null },
+    });
+
+    if (!employee) throw new BadRequestException('Employee not found');
+
+    if (employee.is_face_enrolled) {
+      await this.faceRecognitionService.deleteFaceData(employee_id);
+    }
     return this.prisma.employee.update({
       where: { company_id, employee_id, deleted_at: null },
       data: { deleted_at: new Date() },

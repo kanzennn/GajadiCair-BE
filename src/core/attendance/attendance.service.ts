@@ -336,7 +336,7 @@ export class AttendanceService {
     const now = new Date();
     const nowMin = nowMinutesJakarta(now);
 
-    // window open/close
+    // attendance open/close
     if (company.attendance_open_time) {
       const openMin = timeToMinutesFromDb(company.attendance_open_time);
       if (nowMin < openMin) {
